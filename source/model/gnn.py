@@ -7,6 +7,9 @@ from torch_geometric.nn import GCNConv, GATConv, global_mean_pool, global_max_po
 from torch.nn import Sequential, Linear, ReLU, BatchNorm1d, Dropout
 from torch_geometric.nn import BatchNorm
 
+from source.config.dto import Config
+from source.model.base import Model
+
 
 def knn(x, k):
     """
@@ -72,7 +75,7 @@ def get_graph_feature(x, k=20, idx=None):
     return feature
 
 
-class RegDGCNN(nn.Module):
+class RegDGCNN(Model):
     """
     Deep Graph Convolutional Neural Network for Regression Tasks (RegDGCNN) for processing 3D point cloud data.
 
@@ -80,7 +83,7 @@ class RegDGCNN(nn.Module):
     enabling effective learning of spatial structures.
     """
 
-    def __init__(self, args, output_channels=1):
+    def __init__(self, config: Config, output_channels=1):
         """
         Initializes the RegDGCNN model with specified configurations.
 
@@ -89,16 +92,16 @@ class RegDGCNN(nn.Module):
             dimensions, and 'dropout' rate.
             output_channels (int): Number of output channels (e.g., for drag prediction, this is 1).
         """
-        super(RegDGCNN, self).__init__()
-        self.args = args
-        self.k = args['k']  # Number of nearest neighbors
+        super(RegDGCNN, self).__init__(config)
+        self.args = config
+        self.k = config.parameters.model.k  # Number of nearest neighbors
 
         # Batch normalization layers to stabilize and accelerate training
         self.bn1 = nn.BatchNorm2d(256)
         self.bn2 = nn.BatchNorm2d(512)
         self.bn3 = nn.BatchNorm2d(512)
         self.bn4 = nn.BatchNorm2d(1024)
-        self.bn5 = nn.BatchNorm1d(args['emb_dims'])
+        self.bn5 = nn.BatchNorm1d(config.parameters.model.emb_dims)
 
         # EdgeConv layers: Convolutional layers leveraging local neighborhood information
         self.conv1 = nn.Sequential(nn.Conv2d(6, 256, kernel_size=1, bias=False),
@@ -113,26 +116,26 @@ class RegDGCNN(nn.Module):
         self.conv4 = nn.Sequential(nn.Conv2d(512 * 2, 1024, kernel_size=1, bias=False),
                                    self.bn4,
                                    nn.LeakyReLU(negative_slope=0.2))
-        self.conv5 = nn.Sequential(nn.Conv1d(2304, args['emb_dims'], kernel_size=1, bias=False),
+        self.conv5 = nn.Sequential(nn.Conv1d(2304, config.parameters.model.emb_dims, kernel_size=1, bias=False),
                                    self.bn5,
                                    nn.LeakyReLU(negative_slope=0.2))
 
         # Fully connected layers to interpret the extracted features and make predictions
-        self.linear1 = nn.Linear(args['emb_dims'] * 2, 128, bias=False)
+        self.linear1 = nn.Linear(config.parameters.model.emb_dims * 2, 128, bias=False)
         self.bn6 = nn.BatchNorm1d(128)
-        self.dp1 = nn.Dropout(p=args['dropout'])
+        self.dp1 = nn.Dropout(p=config.parameters.model.dropout)
 
         self.linear2 = nn.Linear(128, 64)
         self.bn7 = nn.BatchNorm1d(64)
-        self.dp2 = nn.Dropout(p=args['dropout'])
+        self.dp2 = nn.Dropout(p=config.parameters.model.dropout)
 
         self.linear3 = nn.Linear(64, 32)
         self.bn8 = nn.BatchNorm1d(32)
-        self.dp3 = nn.Dropout(p=args['dropout'])
+        self.dp3 = nn.Dropout(p=config.parameters.model.dropout)
 
         self.linear4 = nn.Linear(32, 16)
         self.bn9 = nn.BatchNorm1d(16)
-        self.dp4 = nn.Dropout(p=args['dropout'])
+        self.dp4 = nn.Dropout(p=config.parameters.model.dropout)
 
         self.linear5 = nn.Linear(16, output_channels)  # The final output layer
 
@@ -196,7 +199,7 @@ class RegDGCNN(nn.Module):
         return x
 
 
-class DragGNN_XL(torch.nn.Module):
+class DragGNN_XL(Model):
     """
     Extended Graph Neural Network for predicting drag coefficients using GCNConv layers and BatchNorm layers.
 
@@ -207,8 +210,8 @@ class DragGNN_XL(torch.nn.Module):
         forward(data): Forward pass through the network.
     """
 
-    def __init__(self):
-        super(DragGNN_XL, self).__init__()
+    def __init__(self, config: Config):
+        super(DragGNN_XL, self).__init__(config)
         self.conv1 = GCNConv(3, 64)
         self.conv2 = GCNConv(64, 128)
         self.conv3 = GCNConv(128, 128)
@@ -253,7 +256,7 @@ class DragGNN_XL(torch.nn.Module):
         return x
 
 
-class EnhancedDragGNN(torch.nn.Module):
+class EnhancedDragGNN(Model):
     """
     Enhanced Graph Neural Network for predicting drag coefficients using both GCNConv and GATConv layers,
     with Jumping Knowledge for combining features from different layers.
@@ -265,8 +268,8 @@ class EnhancedDragGNN(torch.nn.Module):
         forward(data): Forward pass through the network.
     """
 
-    def __init__(self):
-        super(EnhancedDragGNN, self).__init__()
+    def __init__(self, config: Config):
+        super(EnhancedDragGNN, self).__init__(config)
         self.gcn1 = GCNConv(3, 64)
         self.gat1 = GATConv(64, 64, heads=4, concat=True)
 

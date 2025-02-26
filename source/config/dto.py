@@ -1,6 +1,6 @@
 import os.path
-from dataclasses import dataclass
-from typing import List
+from dataclasses import dataclass, field
+from typing import List, Optional
 
 
 @dataclass
@@ -25,7 +25,7 @@ class DataParams:
     training_size: int
     validation_size: int
     test_size: int
-    num_points: int
+    num_points: Optional[int] = field(default=None)
 
 
 @dataclass

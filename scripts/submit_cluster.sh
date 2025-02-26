@@ -1,9 +1,4 @@
 #!/bin/bash
-#SBATCH -J ahmedML_grid
-#SBATCH -p dzagnormal
-#SBATCH -N 1
-#SBATCH --ntasks-per-node=16
-#SBATCH --gres=gpu:2
 
 # Dynamically generated log files per run
 LOG_DIR="logs"
@@ -13,13 +8,13 @@ mkdir -p $LOG_DIR
 source ~/miniconda3/bin/activate python3
 
 # CSV file containing hyperparameter configurations
-CSV_FILE="../configs/pointnet_hyper_parameters.csv"
+CSV_FILE="../configs/$1_hyper_parameters.csv"
 
 # Skip the header and iterate through each row
 tail -n +2 $CSV_FILE | while IFS=, read -r train_size batch_size epochs num_points lr dropout
 do
     # Generate an experiment name dynamically
-    EXP_NAME="ahmedml_pointnet_ts${train_size}_bs${batch_size}_epochs${epochs}_pts${num_points}_lr${lr}_drop${dropout}_$(date +%Y%m%d)"
+    EXP_NAME="ahmedml_$1_ts${train_size}_bs${batch_size}_epochs${epochs}_pts${num_points}_lr${lr}_drop${dropout}_$(date +%Y%m%d)"
 
     # Set unique log files per run
     OUTPUT_LOG="${LOG_DIR}/${EXP_NAME}.out"
