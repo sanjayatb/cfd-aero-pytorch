@@ -1,0 +1,69 @@
+model_arch: POINTNET
+model_name: RegPointNet
+base_path: /work/home/ac3jvu5s13/Chalmers/code/cfd-aero-pytorch
+
+datasets:
+  AhmedML:
+    stl_path: inputs/ahmed_ml/stl
+    target_data_path: inputs/ahmed_ml/targets.csv
+    id_col: "run"
+    target_col: " cd"
+    subset_dir: inputs/ahmed_ml/subset
+  WindsorML:
+    stl_path: inputs/windsor_ml/stl
+    target_data_path: inputs/windsor_ml/targets.csv
+    id_col: "run"
+    target_col: "cd"
+    subset_dir: inputs/windsor_ml/subset
+  DrivAerML:
+    stl_path: inputs/drivaer_ml/stl
+    target_data_path: inputs/drivaer_ml/targets.csv
+    id_col: "Design"
+    target_col: "Average Cd"
+    subset_dir: inputs/drivaer_ml/subset
+
+
+environment:
+  cuda: true
+  device_id: [ 0, 1 ]
+  seed: 1
+  num_workers: 16
+
+# below parameters can be override by hyper_parameters.csv file
+parameters:
+  data:
+    dataset: DrivAerML
+    training_size: 350
+    validation_size: 75
+    test_size: 75
+    num_points: 100000
+  model:
+    lr: 0.001
+    batch_size: 2
+    epochs: 200
+    dropout: 0.0
+    emb_dims: 1024
+    k: 40
+    optimizer: adam
+    channels:
+      - 6
+      - 64
+      - 128
+      - 256
+      - 512
+      - 1024
+    linear_sizes:
+      - 128
+      - 64
+      - 32
+      - 16
+    output_channels: 1
+
+outputs:
+  log_path: outputs/logs
+  preprocessed_data: outputs/preprocessed_data
+  model:
+    best_model_path: outputs/models
+    best_scores_path: outputs/scores
+
+
