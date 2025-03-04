@@ -5,3 +5,10 @@ class CFDDataset(Enum):
     AHMED_ML = "AhmedML"
     WINDSOR_ML = "WindsorML"
     DRIVAER_ML = "DrivAerML"
+
+
+class ModelArchitecture(Enum):
+    POINT_NET = "PointNet"
+    GNN = "GNN"
+    FNO = "FNO"
+    GINO = "GINO"

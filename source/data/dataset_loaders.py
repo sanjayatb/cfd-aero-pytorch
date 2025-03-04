@@ -5,6 +5,7 @@ from torch.utils.data import DataLoader, Dataset, Subset, random_split
 from torch_geometric.data import Data, Dataset as GeoDataset, DataLoader as GeoDataLoader
 
 from source.config.dto import Config
+from source.data.enums import CFDDataset
 
 
 class DatasetLoaders:
@@ -21,12 +22,24 @@ class DatasetLoaders:
     def init_loaders(self):
         def create_subset(dataset: Dataset, ids_file) -> Dataset:
             try:
-                with open(os.path.join(self.config.data.subset_dir, ids_file), 'r') as file:
-                    subset_ids_str = file.read().split()
-                subset_ids = list(map(int, subset_ids_str))
-                subset_indices = dataset.data_frame[dataset.data_frame['run'].isin(subset_ids)].index.tolist()
-                # print(subset_indices)
-                return Subset(dataset, subset_indices)
+                dataset_conf = self.config.datasets.get(self.config.parameters.data.dataset)
+                if self.config.parameters.data.dataset != CFDDataset.DRIVAER_ML.value:
+                    with open(os.path.join(dataset_conf.subset_dir, ids_file), 'r') as file:
+                        subset_ids_str = file.read().split()
+                    subset_ids = list(map(int, subset_ids_str))
+                    dataset_conf = self.config.datasets.get(self.config.parameters.data.dataset)
+                    subset_indices = dataset.data_frame[
+                        dataset.data_frame[dataset_conf.id_col].isin(subset_ids)].index.tolist()
+                    # print(subset_indices)
+                    return Subset(dataset, subset_indices)
+                else:
+                    with open(os.path.join(dataset_conf.subset_dir, ids_file), 'r') as file:
+                        subset_ids = file.read().split()
+                    # Filter the dataset DataFrame based on subset IDs
+                    dataset_conf = self.config.datasets.get(self.config.parameters.data.dataset)
+                    subset_indices = dataset.data_frame[
+                        dataset.data_frame[dataset_conf.id_col].isin(subset_ids)].index.tolist()
+                    return Subset(dataset, subset_indices)
             except FileNotFoundError as e:
                 print(e)
                 raise FileNotFoundError(f"Error loading subset file {ids_file}: {e}")
@@ -69,12 +82,24 @@ class GeoDatasetLoaders:
     def init_loaders(self):
         def create_subset(dataset: GeoDataset, ids_file) -> Dataset:
             try:
-                with open(os.path.join(self.config.data.subset_dir, ids_file), 'r') as file:
-                    subset_ids_str = file.read().split()
-                subset_ids = list(map(int, subset_ids_str))
-                subset_indices = dataset.data_frame[dataset.data_frame['run'].isin(subset_ids)].index.tolist()
-                # print(subset_indices)
-                return Subset(dataset, subset_indices)
+                dataset_conf = self.config.datasets.get(self.config.parameters.data.dataset)
+                if self.config.parameters.data.dataset != CFDDataset.DRIVAER_ML.value:
+                    with open(os.path.join(dataset_conf.subset_dir, ids_file), 'r') as file:
+                        subset_ids_str = file.read().split()
+                    subset_ids = list(map(int, subset_ids_str))
+                    dataset_conf = self.config.datasets.get(self.config.parameters.data.dataset)
+                    subset_indices = dataset.data_frame[
+                        dataset.data_frame[dataset_conf.id_col].isin(subset_ids)].index.tolist()
+                    # print(subset_indices)
+                    return Subset(dataset, subset_indices)
+                else:
+                    with open(os.path.join(dataset_conf.subset_dir, ids_file), 'r') as file:
+                        subset_ids = file.read().split()
+                    # Filter the dataset DataFrame based on subset IDs
+                    dataset_conf = self.config.datasets.get(self.config.parameters.data.dataset)
+                    subset_indices = dataset.data_frame[
+                        dataset.data_frame[dataset_conf.id_col].isin(subset_ids)].index.tolist()
+                    return Subset(dataset, subset_indices)
             except FileNotFoundError as e:
                 print(e)
                 raise FileNotFoundError(f"Error loading subset file {ids_file}: {e}")
@@ -91,13 +116,13 @@ class GeoDatasetLoaders:
         # Initialize DataLoaders for each subset
 
         self.train_dataloader = GeoDataLoader(train_dataset, batch_size=self.config.parameters.model.batch_size,
-                                           shuffle=True, drop_last=True,
-                                           num_workers=self.config.environment.num_workers)
+                                              shuffle=True, drop_last=True,
+                                              num_workers=self.config.environment.num_workers)
 
         self.val_dataloader = GeoDataLoader(val_dataset, batch_size=self.config.parameters.model.batch_size,
-                                         shuffle=False, drop_last=True,
-                                         num_workers=self.config.environment.num_workers)
+                                            shuffle=False, drop_last=True,
+                                            num_workers=self.config.environment.num_workers)
 
         self.test_dataloader = GeoDataLoader(test_dataset, batch_size=self.config.parameters.model.batch_size,
-                                          shuffle=False,
-                                          drop_last=True, num_workers=self.config.environment.num_workers)
+                                             shuffle=False,
+                                             drop_last=True, num_workers=self.config.environment.num_workers)

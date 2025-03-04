@@ -10,6 +10,7 @@ import seaborn as sns
 from typing import Callable, Optional, Tuple, List
 from torch_geometric.data import Data
 
+from source.config.dto import Config
 from source.data.augmentation import DataAugmentation
 
 
@@ -18,7 +19,7 @@ class AhmedMLDataset(Dataset):
     PyTorch Dataset class for the AhmedML dataset, handling loading, transforming, and augmenting 3D car models.
     """
 
-    def __init__(self, root_dir: str, csv_file: str, num_points: int, transform: Optional[Callable] = None,
+    def __init__(self, config: Config, root_dir: str, csv_file: str, num_points: int, transform: Optional[Callable] = None,
                  pointcloud_exist: bool = False):
         """
         Initializes the AhmedMLDataset instance.
@@ -31,6 +32,7 @@ class AhmedMLDataset(Dataset):
             pointcloud_exist (bool): Whether the point clouds already exist as .pt files.
         """
         self.root_dir = root_dir
+        self.config = config
         try:
             self.data_frame = pd.read_csv(csv_file)
         except Exception as e:
@@ -125,8 +127,9 @@ class AhmedMLDataset(Dataset):
             return self.cache[idx]
         while True:
             row = self.data_frame.iloc[idx]
-            design_id = int(row['run'])
-            cd_value = row[' cd']
+            dataset_conf = self.config.datasets.get(self.config.parameters.data.dataset)
+            design_id = int(row[dataset_conf.id_col])
+            cd_value = row[dataset_conf.target_col]
 
             if self.pointcloud_exist:
                 vertices = self._load_point_cloud(design_id)
@@ -191,7 +194,8 @@ class AhmedMLDataset(Dataset):
         wraps it using PyVista for visualization, and then sets up a PyVista plotter to display the mesh.
         """
         row = self.data_frame.iloc[idx]
-        design_id = int(row['run'])
+        dataset_conf = self.config.datasets.get(self.config.parameters.data.dataset)
+        design_id = int(row[dataset_conf.id_col])
         geometry_path = os.path.join(self.root_dir, f"ahmed_{design_id}.stl")
 
         try:
@@ -222,7 +226,8 @@ class AhmedMLDataset(Dataset):
         It uses seaborn to obtain visually distinct colors for the mesh and nodes.
         """
         row = self.data_frame.iloc[idx]
-        design_id = int(row['run'])
+        dataset_conf = self.config.datasets.get(self.config.parameters.data.dataset)
+        design_id = int(row[dataset_conf.id_col])
         geometry_path = os.path.join(self.root_dir, f"ahmed_{design_id}.stl")
 
         try:
@@ -337,7 +342,7 @@ class AhmedMLGNNDataset(Dataset):
     PyTorch Dataset for loading and processing the AhmedML dataset into graph format suitable for GNNs.
     """
 
-    def __init__(self, root_dir: str, csv_file: str, normalize: bool = True):
+    def __init__(self, config: Config, root_dir: str, csv_file: str, normalize: bool = True):
         """
         Initialize the dataset.
 
@@ -347,6 +352,7 @@ class AhmedMLGNNDataset(Dataset):
             normalize (bool): Whether to normalize the node features.
         """
         self.root_dir = root_dir
+        self.config = config
         self.data_frame = pd.read_csv(csv_file)
         self.normalize = normalize
         self.cache = {}
@@ -392,9 +398,10 @@ class AhmedMLGNNDataset(Dataset):
             return self.cache[idx]
 
         row = self.data_frame.iloc[idx]
-        design_id = int(row['run'])
+        dataset_conf = self.config.datasets.get(self.config.parameters.data.dataset)
+        design_id = int(row[dataset_conf.id_col])
         stl_path = os.path.join(self.root_dir, f"ahmed_{design_id}.stl")
-        cd_value = row[' cd']
+        cd_value = row[dataset_conf.target_col]
 
         # Load the mesh from STL
         try:
@@ -426,7 +433,8 @@ class AhmedMLGNNDataset(Dataset):
             idx (int): Index of the sample to visualize.
         """
         row = self.data_frame.iloc[idx]
-        design_id = int(row['run'])
+        dataset_conf = self.config.datasets.get(self.config.parameters.data.dataset)
+        design_id = int(row[dataset_conf.id_col])
         geometry_path = os.path.join(self.root_dir, f"ahmed_{design_id}.stl")
 
         try:

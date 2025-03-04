@@ -1,14 +1,14 @@
 import os.path
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 
 @dataclass
-class DataConfig:
-    name: str
+class DatasetsConfig:
     stl_path: str
     target_data_path: str
-    target_col: List[str]
+    id_col: str
+    target_col: str
     subset_dir: str
 
 
@@ -22,6 +22,7 @@ class EnvironmentConfig:
 
 @dataclass
 class DataParams:
+    dataset: str
     training_size: int
     validation_size: int
     test_size: int
@@ -63,18 +64,20 @@ class OutputsConfig:
 
 @dataclass
 class Config:
+    model_arch: str
     model_name: str
     exp_name: str
     base_path: str
-    data: DataConfig
+    datasets: Dict[str, DatasetsConfig]
     environment: EnvironmentConfig
     parameters: Parameters
     outputs: OutputsConfig
 
     def __post_init__(self):
-        self.data.stl_path = os.path.join(self.base_path, self.data.stl_path)
-        self.data.target_data_path = os.path.join(self.base_path, self.data.target_data_path)
-        self.data.subset_dir = os.path.join(self.base_path, self.data.subset_dir)
+        for _, dataset in self.datasets.items():
+            dataset.stl_path = os.path.join(self.base_path, dataset.stl_path)
+            dataset.target_data_path = os.path.join(self.base_path, dataset.target_data_path)
+            dataset.subset_dir = os.path.join(self.base_path, dataset.subset_dir)
         self.outputs.preprocessed_data = os.path.join(self.base_path, self.outputs.preprocessed_data)
         self.outputs.log_path = os.path.join(self.base_path, self.outputs.log_path)
         self.outputs.model.best_model_path = os.path.join(self.base_path, self.outputs.model.best_model_path)

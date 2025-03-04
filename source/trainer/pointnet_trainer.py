@@ -18,6 +18,7 @@ class PointNetTrainer(ModelTrainer):
     def __init__(self, config, model, data_loaders):
         super().__init__(config, model, data_loaders)
         self._train_best_mse = None
+        self._train_best_r2 = None
 
     @override
     def setup_data(self):
@@ -30,7 +31,7 @@ class PointNetTrainer(ModelTrainer):
         # If CUDA is enabled and more than one GPU is available, wrap the model in a DataParallel module
         # to enable parallel computation across multiple GPUs. Specifically, use GPUs with IDs 0, 1, 2, and 3.
         if self.config.environment.cuda and torch.cuda.device_count() > 1:
-            this_model = torch.nn.DataParallel(this_model, device_ids=[0, 1])
+            this_model = torch.nn.DataParallel(this_model, device_ids=self.config.environment.device_id)
 
         # Return the initialized model
         return this_model
@@ -134,6 +135,7 @@ class PointNetTrainer(ModelTrainer):
                 best_mse = avg_val_loss
                 self.result_collector.save_best_model(model.state_dict(), best_mse)
                 self._train_best_mse = best_mse
+                self._train_best_r2 = val_r2.item()
 
             scheduler.step(avg_val_loss)  # Update the learning rate based on the validation loss
 
@@ -185,7 +187,7 @@ class PointNetTrainer(ModelTrainer):
         print(f"Test MSE: {avg_mse:.6f}, Test MAE: {avg_mae:.6f}, Max MAE: {max_mae:.6f}, Test R²: {test_r2:.4f}")
         print(f"Total inference time: {total_inference_time:.2f}s for {total_samples} samples")
 
-        scores = {'Train Best MSE': self._train_best_mse, 'Test MSE': avg_mse, 'Test MAE': avg_mae,
+        scores = {'Train Best MSE': self._train_best_mse, 'Best model R2': self._train_best_r2, 'Test MSE': avg_mse, 'Test MAE': avg_mae,
                   'Test Max MAE': max_mae, 'Test R2': test_r2.item()}
         self.result_collector.save_test_scores(scores)
 
@@ -194,7 +196,7 @@ class PointNetTrainer(ModelTrainer):
         """Load a saved model and test it, returning the test results."""
         this_model = self.model(config=self.config).to(self.device)
         if self.config.environment.cuda and torch.cuda.device_count() > 1:
-            this_model = torch.nn.DataParallel(this_model, device_ids=[0, 1])
+            this_model = torch.nn.DataParallel(this_model, device_ids=self.config.environment.device_id)
 
         best_model_path = os.path.join(self.config.outputs.model.best_model_path,
                                        f'{self.config.exp_name}_best_model.pth')
