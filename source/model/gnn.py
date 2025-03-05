@@ -3,7 +3,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 import trimesh
 from torch_geometric.data import Data, DataLoader
-from torch_geometric.nn import GCNConv, GATConv, global_mean_pool, global_max_pool, JumpingKnowledge
+from torch_geometric.nn import (
+    GCNConv,
+    GATConv,
+    global_mean_pool,
+    global_max_pool,
+    JumpingKnowledge,
+)
 from torch.nn import Sequential, Linear, ReLU, BatchNorm1d, Dropout
 from torch_geometric.nn import BatchNorm
 
@@ -104,21 +110,33 @@ class RegDGCNN(Model):
         self.bn5 = nn.BatchNorm1d(config.parameters.model.emb_dims)
 
         # EdgeConv layers: Convolutional layers leveraging local neighborhood information
-        self.conv1 = nn.Sequential(nn.Conv2d(6, 256, kernel_size=1, bias=False),
-                                   self.bn1,
-                                   nn.LeakyReLU(negative_slope=0.2))
-        self.conv2 = nn.Sequential(nn.Conv2d(256 * 2, 512, kernel_size=1, bias=False),
-                                   self.bn2,
-                                   nn.LeakyReLU(negative_slope=0.2))
-        self.conv3 = nn.Sequential(nn.Conv2d(512 * 2, 512, kernel_size=1, bias=False),
-                                   self.bn3,
-                                   nn.LeakyReLU(negative_slope=0.2))
-        self.conv4 = nn.Sequential(nn.Conv2d(512 * 2, 1024, kernel_size=1, bias=False),
-                                   self.bn4,
-                                   nn.LeakyReLU(negative_slope=0.2))
-        self.conv5 = nn.Sequential(nn.Conv1d(2304, config.parameters.model.emb_dims, kernel_size=1, bias=False),
-                                   self.bn5,
-                                   nn.LeakyReLU(negative_slope=0.2))
+        self.conv1 = nn.Sequential(
+            nn.Conv2d(6, 256, kernel_size=1, bias=False),
+            self.bn1,
+            nn.LeakyReLU(negative_slope=0.2),
+        )
+        self.conv2 = nn.Sequential(
+            nn.Conv2d(256 * 2, 512, kernel_size=1, bias=False),
+            self.bn2,
+            nn.LeakyReLU(negative_slope=0.2),
+        )
+        self.conv3 = nn.Sequential(
+            nn.Conv2d(512 * 2, 512, kernel_size=1, bias=False),
+            self.bn3,
+            nn.LeakyReLU(negative_slope=0.2),
+        )
+        self.conv4 = nn.Sequential(
+            nn.Conv2d(512 * 2, 1024, kernel_size=1, bias=False),
+            self.bn4,
+            nn.LeakyReLU(negative_slope=0.2),
+        )
+        self.conv5 = nn.Sequential(
+            nn.Conv1d(
+                2304, config.parameters.model.emb_dims, kernel_size=1, bias=False
+            ),
+            self.bn5,
+            nn.LeakyReLU(negative_slope=0.2),
+        )
 
         # Fully connected layers to interpret the extracted features and make predictions
         self.linear1 = nn.Linear(config.parameters.model.emb_dims * 2, 128, bias=False)
@@ -152,30 +170,58 @@ class RegDGCNN(Model):
         batch_size = x.size(0)
 
         # Extract graph features and apply EdgeConv blocks
-        x = get_graph_feature(x, k=self.k)  # (batch_size, 3, num_points) -> (batch_size, 3*2, num_points, k)
-        x = self.conv1(x)  # (batch_size, 3*2, num_points, k) -> (batch_size, 256, num_points, k)
+        x = get_graph_feature(
+            x, k=self.k
+        )  # (batch_size, 3, num_points) -> (batch_size, 3*2, num_points, k)
+        x = self.conv1(
+            x
+        )  # (batch_size, 3*2, num_points, k) -> (batch_size, 256, num_points, k)
 
         # Global max pooling
-        x1 = x.max(dim=-1, keepdim=False)[0]  # (batch_size, 64, num_points, k) -> (batch_size, 64, num_points)
+        x1 = x.max(dim=-1, keepdim=False)[
+            0
+        ]  # (batch_size, 64, num_points, k) -> (batch_size, 64, num_points)
 
         # Repeat the process for subsequent EdgeConv blocks
-        x = get_graph_feature(x1, k=self.k)  # (batch_size, 256, num_points) -> (batch_size, 256*2, num_points, k)
-        x = self.conv2(x)  # (batch_size, 256*2, num_points, k) -> (batch_size, 512, num_points, k)
-        x2 = x.max(dim=-1, keepdim=False)[0]  # (batch_size, 512, num_points, k) -> (batch_size, 512, num_points)
+        x = get_graph_feature(
+            x1, k=self.k
+        )  # (batch_size, 256, num_points) -> (batch_size, 256*2, num_points, k)
+        x = self.conv2(
+            x
+        )  # (batch_size, 256*2, num_points, k) -> (batch_size, 512, num_points, k)
+        x2 = x.max(dim=-1, keepdim=False)[
+            0
+        ]  # (batch_size, 512, num_points, k) -> (batch_size, 512, num_points)
 
-        x = get_graph_feature(x2, k=self.k)  # (batch_size, 512, num_points) -> (batch_size, 512*2, num_points, k)
-        x = self.conv3(x)  # (batch_size, 512*2, num_points, k) -> (batch_size, 512, num_points, k)
-        x3 = x.max(dim=-1, keepdim=False)[0]  # (batch_size, 512, num_points, k) -> (batch_size, 512, num_points)
+        x = get_graph_feature(
+            x2, k=self.k
+        )  # (batch_size, 512, num_points) -> (batch_size, 512*2, num_points, k)
+        x = self.conv3(
+            x
+        )  # (batch_size, 512*2, num_points, k) -> (batch_size, 512, num_points, k)
+        x3 = x.max(dim=-1, keepdim=False)[
+            0
+        ]  # (batch_size, 512, num_points, k) -> (batch_size, 512, num_points)
 
-        x = get_graph_feature(x3, k=self.k)  # (batch_size, 512, num_points) -> (batch_size, 512*2, num_points, k)
-        x = self.conv4(x)  # (batch_size, 512*2, num_points, k) -> (batch_size, 1024, num_points, k)
-        x4 = x.max(dim=-1, keepdim=False)[0]  # (batch_size, 1024, num_points, k) -> (batch_size, 1024, num_points)
+        x = get_graph_feature(
+            x3, k=self.k
+        )  # (batch_size, 512, num_points) -> (batch_size, 512*2, num_points, k)
+        x = self.conv4(
+            x
+        )  # (batch_size, 512*2, num_points, k) -> (batch_size, 1024, num_points, k)
+        x4 = x.max(dim=-1, keepdim=False)[
+            0
+        ]  # (batch_size, 1024, num_points, k) -> (batch_size, 1024, num_points)
 
         # Concatenate features from all EdgeConv blocks
-        x = torch.cat((x1, x2, x3, x4), dim=1)  # (batch_size, 256+512+512+1024, num_points)
+        x = torch.cat(
+            (x1, x2, x3, x4), dim=1
+        )  # (batch_size, 256+512+512+1024, num_points)
 
         # Apply the final convolutional block
-        x = self.conv5(x)  # (batch_size, 256+512+512+1024, num_points) -> (batch_size, emb_dims, num_points)
+        x = self.conv5(
+            x
+        )  # (batch_size, 256+512+512+1024, num_points) -> (batch_size, emb_dims, num_points)
         # Combine global max and average pooling features
         # (batch_size, emb_dims, num_points) -> (batch_size, emb_dims)
         x1 = F.adaptive_max_pool1d(x, 1).view(batch_size, -1)
@@ -184,13 +230,21 @@ class RegDGCNN(Model):
         x = torch.cat((x1, x2), 1)  # (batch_size, emb_dims*2)
 
         # Process features through fully connected layers with dropout and batch normalization
-        x = F.leaky_relu(self.bn6(self.linear1(x)), negative_slope=0.2)  # (batch_size, emb_dims*2) -> (batch_size, 128)
+        x = F.leaky_relu(
+            self.bn6(self.linear1(x)), negative_slope=0.2
+        )  # (batch_size, emb_dims*2) -> (batch_size, 128)
         x = self.dp1(x)
-        x = F.leaky_relu(self.bn7(self.linear2(x)), negative_slope=0.2)  # (batch_size, 128) -> (batch_size, 64)
+        x = F.leaky_relu(
+            self.bn7(self.linear2(x)), negative_slope=0.2
+        )  # (batch_size, 128) -> (batch_size, 64)
         x = self.dp2(x)
-        x = F.leaky_relu(self.bn8(self.linear3(x)), negative_slope=0.2)  # (batch_size, 64) -> (batch_size, 32)
+        x = F.leaky_relu(
+            self.bn8(self.linear3(x)), negative_slope=0.2
+        )  # (batch_size, 64) -> (batch_size, 32)
         x = self.dp3(x)
-        x = F.leaky_relu(self.bn9(self.linear4(x)), negative_slope=0.2)  # (batch_size, 32) -> (batch_size, 16)
+        x = F.leaky_relu(
+            self.bn9(self.linear4(x)), negative_slope=0.2
+        )  # (batch_size, 32) -> (batch_size, 16)
         x = self.dp4(x)
 
         # Final linear layer to produce the output
@@ -230,7 +284,7 @@ class DragGNN_XL(Model):
             Dropout(0.4),
             Linear(128, 64),
             ReLU(),
-            Linear(64, 1)
+            Linear(64, 1),
         )
 
     def forward(self, data: Data) -> torch.Tensor:
@@ -280,13 +334,9 @@ class EnhancedDragGNN(Model):
         self.bn2 = BatchNorm1d(256)
         self.gcn3 = GCNConv(256, 256)
 
-        self.jk = JumpingKnowledge(mode='cat')
+        self.jk = JumpingKnowledge(mode="cat")
 
-        self.fc1 = Sequential(
-            Linear(256 * 3, 128),
-            ReLU(),
-            BatchNorm1d(128)
-        )
+        self.fc1 = Sequential(Linear(256 * 3, 128), ReLU(), BatchNorm1d(128))
         self.fc2 = Linear(128, 1)
 
     def forward(self, data: Data) -> torch.Tensor:

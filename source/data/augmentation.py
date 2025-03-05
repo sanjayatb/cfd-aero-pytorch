@@ -3,15 +3,21 @@ import numpy as np
 from typing import Tuple
 import logging
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
 
 class DataAugmentation:
     """
     Class encapsulating various data augmentation techniques for point clouds.
     """
+
     @staticmethod
-    def translate_pointcloud(pointcloud: torch.Tensor, translation_range: Tuple[float, float] = (2./3., 3./2.)) -> torch.Tensor:
+    def translate_pointcloud(
+        pointcloud: torch.Tensor,
+        translation_range: Tuple[float, float] = (2.0 / 3.0, 3.0 / 2.0),
+    ) -> torch.Tensor:
         """
         Translates the pointcloud by a random factor within a given range.
 
@@ -23,13 +29,19 @@ class DataAugmentation:
             Translated point cloud as a torch.Tensor.
         """
         # Randomly choose translation factors and apply them to the pointcloud
-        xyz1 = np.random.uniform(low=translation_range[0], high=translation_range[1], size=[3])
+        xyz1 = np.random.uniform(
+            low=translation_range[0], high=translation_range[1], size=[3]
+        )
         xyz2 = np.random.uniform(low=-0.2, high=0.2, size=[3])
-        translated_pointcloud = np.add(np.multiply(pointcloud, xyz1), xyz2).astype('float32')
+        translated_pointcloud = np.add(np.multiply(pointcloud, xyz1), xyz2).astype(
+            "float32"
+        )
         return torch.tensor(translated_pointcloud, dtype=torch.float32)
 
     @staticmethod
-    def jitter_pointcloud(pointcloud: torch.Tensor, sigma: float = 0.01, clip: float = 0.02) -> torch.Tensor:
+    def jitter_pointcloud(
+        pointcloud: torch.Tensor, sigma: float = 0.01, clip: float = 0.02
+    ) -> torch.Tensor:
         """
         Adds Gaussian noise to the pointcloud.
 
@@ -43,7 +55,9 @@ class DataAugmentation:
         """
         # Add Gaussian noise and clip to the specified range
         N, C = pointcloud.shape
-        jittered_pointcloud = pointcloud + torch.clamp(sigma * torch.randn(N, C), -clip, clip)
+        jittered_pointcloud = pointcloud + torch.clamp(
+            sigma * torch.randn(N, C), -clip, clip
+        )
         return jittered_pointcloud
 
     @staticmethod

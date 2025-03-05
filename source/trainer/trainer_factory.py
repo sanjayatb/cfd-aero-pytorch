@@ -10,7 +10,6 @@ from source.trainer.pointnet_trainer import PointNetTrainer
 
 
 class TrainerFactory:
-
     @staticmethod
     def get_model_class(module_name, class_name):
         """
@@ -25,38 +24,49 @@ class TrainerFactory:
             model_class = getattr(module, class_name)  # Get the class from the module
             return model_class  # Return the class itself
         except (ModuleNotFoundError, AttributeError) as e:
-            raise ImportError(f"Error loading model '{class_name}' from '{module_name}': {e}")
+            raise ImportError(
+                f"Error loading model '{class_name}' from '{module_name}': {e}"
+            )
 
     @staticmethod
     def get_pointnet_trainer(config):
 
         dataset_conf = config.datasets.get(config.parameters.data.dataset)
         if config.parameters.data.dataset == CFDDataset.AHMED_ML.value:
-            dataset = AhmedMLDataset(config=config,
-                                     root_dir=dataset_conf.stl_path,
-                                     csv_file=dataset_conf.target_data_path,
-                                     num_points=config.parameters.data.num_points,
-                                     pointcloud_exist=False)
+            dataset = AhmedMLDataset(
+                config=config,
+                root_dir=dataset_conf.stl_path,
+                csv_file=dataset_conf.target_data_path,
+                num_points=config.parameters.data.num_points,
+                pointcloud_exist=False,
+            )
 
         elif config.parameters.data.dataset == CFDDataset.WINDSOR_ML.value:
-            dataset = WindsorMLDataset(config=config,
-                                       root_dir=dataset_conf.stl_path,
-                                       csv_file=dataset_conf.target_data_path,
-                                       num_points=config.parameters.data.num_points,
-                                       pointcloud_exist=False)
+            dataset = WindsorMLDataset(
+                config=config,
+                root_dir=dataset_conf.stl_path,
+                csv_file=dataset_conf.target_data_path,
+                num_points=config.parameters.data.num_points,
+                pointcloud_exist=False,
+            )
         elif config.parameters.data.dataset == CFDDataset.DRIVAER_ML.value:
-            dataset = DrivAerNetDataset(config=config,
-                                        root_dir=dataset_conf.stl_path,
-                                        csv_file=dataset_conf.target_data_path,
-                                        num_points=config.parameters.data.num_points,
-                                        pointcloud_exist=False)
+            dataset = DrivAerNetDataset(
+                config=config,
+                root_dir=dataset_conf.stl_path,
+                csv_file=dataset_conf.target_data_path,
+                num_points=config.parameters.data.num_points,
+                pointcloud_exist=False,
+            )
         else:
             raise NotImplementedError()
 
         loader = DatasetLoaders(config=config, dataset=dataset)
 
-        trainer = PointNetTrainer(config, TrainerFactory.get_model_class("source.model.pointnet", config.model_name),
-                                  loader)
+        trainer = PointNetTrainer(
+            config,
+            TrainerFactory.get_model_class("source.model.pointnet", config.model_name),
+            loader,
+        )
 
         return trainer
 
@@ -65,21 +75,33 @@ class TrainerFactory:
 
         dataset_conf = config.datasets.get(config.parameters.data.dataset)
         if config.parameters.data.dataset == CFDDataset.AHMED_ML.value:
-            dataset = AhmedMLGNNDataset(config=config,
-                                        root_dir=dataset_conf.stl_path,
-                                        csv_file=dataset_conf.target_data_path)
+            dataset = AhmedMLGNNDataset(
+                config=config,
+                root_dir=dataset_conf.stl_path,
+                csv_file=dataset_conf.target_data_path,
+            )
         elif config.parameters.data.dataset == CFDDataset.WINDSOR_ML.value:
-            dataset = WindsorMLGNNDataset(config=config,
-                                          root_dir=dataset_conf.stl_path,
-                                          csv_file=dataset_conf.target_data_path)
+            dataset = WindsorMLGNNDataset(
+                config=config,
+                root_dir=dataset_conf.stl_path,
+                csv_file=dataset_conf.target_data_path,
+            )
         elif config.parameters.data.dataset == CFDDataset.DRIVAER_ML.value:
-            dataset = DrivAerNetGNNDataset(config=config,
-                                           root_dir=dataset_conf.stl_path,
-                                           csv_file=dataset_conf.target_data_path)
+            dataset = DrivAerNetGNNDataset(
+                config=config,
+                root_dir=dataset_conf.stl_path,
+                csv_file=dataset_conf.target_data_path,
+            )
         else:
-            raise NotImplementedError(f"{config.parameters.data.dataset} is not handled")
+            raise NotImplementedError(
+                f"{config.parameters.data.dataset} is not handled"
+            )
         loader = GeoDatasetLoaders(config=config, dataset=dataset)
 
-        trainer = GNNTrainer(config, TrainerFactory.get_model_class("source.model.gnn", config.model_name), loader)
+        trainer = GNNTrainer(
+            config,
+            TrainerFactory.get_model_class("source.model.gnn", config.model_name),
+            loader,
+        )
 
         return trainer

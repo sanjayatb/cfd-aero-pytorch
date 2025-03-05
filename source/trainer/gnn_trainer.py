@@ -15,7 +15,6 @@ from source.utils.model import r2_score
 
 
 class GNNTrainer(ModelTrainer):
-
     def __init__(self, config, model, data_loaders):
         super().__init__(config, model, data_loaders)
         self._train_best_mse = None
@@ -32,7 +31,9 @@ class GNNTrainer(ModelTrainer):
         # If CUDA is enabled and more than one GPU is available, wrap the model in a DataParallel module
         # to enable parallel computation across multiple GPUs. Specifically, use GPUs with IDs 0, 1, 2, and 3.
         if self.config.environment.cuda and torch.cuda.device_count() > 1:
-            this_model = torch.nn.DataParallel(this_model, device_ids=self.config.environment.device_id)
+            this_model = torch.nn.DataParallel(
+                this_model, device_ids=self.config.environment.device_id
+            )
 
         # Return the initialized model
         return this_model
@@ -43,14 +44,27 @@ class GNNTrainer(ModelTrainer):
         training_start_time = time.time()  # Start timing for training
 
         # Initialize the Adam optimizer
-        optimizer = optim.Adam(model.parameters(), lr=self.config.parameters.model.lr, weight_decay=1e-4) \
-            if self.config.parameters.model.optimizer == 'adam' else optim.SGD(
-            model.parameters(), lr=self.config.parameters.model.lr, momentum=0.9, weight_decay=1e-4)
+        optimizer = (
+            optim.Adam(
+                model.parameters(),
+                lr=self.config.parameters.model.lr,
+                weight_decay=1e-4,
+            )
+            if self.config.parameters.model.optimizer == "adam"
+            else optim.SGD(
+                model.parameters(),
+                lr=self.config.parameters.model.lr,
+                momentum=0.9,
+                weight_decay=1e-4,
+            )
+        )
 
         # Initialize the learning rate scheduler (ReduceLROnPlateau) to reduce the learning rate based on validation loss
-        scheduler = ReduceLROnPlateau(optimizer, 'min', patience=20, factor=0.1, verbose=True)
+        scheduler = ReduceLROnPlateau(
+            optimizer, "min", patience=20, factor=0.1, verbose=True
+        )
 
-        best_mse = float('inf')  # Initialize the best MSE as infinity
+        best_mse = float("inf")  # Initialize the best MSE as infinity
 
         # Training loop over the specified number of epochs
         epochs = self.config.parameters.model.epochs
@@ -60,7 +74,10 @@ class GNNTrainer(ModelTrainer):
             total_loss = 0
 
             # Iterate over the training data
-            for data in tqdm(self.data_loaders.train_dataloader, desc=f"Epoch {epoch + 1}/{epochs} [Training]"):
+            for data in tqdm(
+                self.data_loaders.train_dataloader,
+                desc=f"Epoch {epoch + 1}/{epochs} [Training]",
+            ):
                 data = data.to(self.device)  # Move data to the gpu
 
                 optimizer.zero_grad()
@@ -75,7 +92,9 @@ class GNNTrainer(ModelTrainer):
             # Calculate and print the average training loss for the epoch
             avg_loss = total_loss / len(self.data_loaders.train_dataloader)
             train_losses.append(avg_loss)
-            print(f"Epoch {epoch + 1} Training Loss: {avg_loss:.6f} Time: {epoch_duration:.2f}s")
+            print(
+                f"Epoch {epoch + 1} Training Loss: {avg_loss:.6f} Time: {epoch_duration:.2f}s"
+            )
 
             # Validation phase
             model.eval()  # Set the model to evaluation mode
@@ -87,7 +106,10 @@ class GNNTrainer(ModelTrainer):
             # No gradient computation needed during validation
             with torch.no_grad():
                 # Iterate over the validation data
-                for data in tqdm(self.data_loaders.val_dataloader, desc=f"Epoch {epoch + 1}/{epochs} [Validation]"):
+                for data in tqdm(
+                    self.data_loaders.val_dataloader,
+                    desc=f"Epoch {epoch + 1}/{epochs} [Validation]",
+                ):
                     inference_start_time = time.time()
                     data = data.to(self.device)
                     outputs = model(data)
@@ -106,7 +128,8 @@ class GNNTrainer(ModelTrainer):
             val_losses.append(avg_val_loss)
             avg_inference_time = sum(inference_times) / len(inference_times)
             print(
-                f"Epoch {epoch + 1} Validation Loss: {avg_val_loss:.4f}, Avg Inference Time: {avg_inference_time:.4f}s")
+                f"Epoch {epoch + 1} Validation Loss: {avg_val_loss:.4f}, Avg Inference Time: {avg_inference_time:.4f}s"
+            )
 
             # Concatenate predictions and targets
             all_preds = np.concatenate(all_preds)
@@ -152,10 +175,16 @@ class GNNTrainer(ModelTrainer):
 
                 end_time = time.time()  # End time for inference
                 inference_time = end_time - start_time
-                total_inference_time += inference_time  # Accumulate total inference time
+                total_inference_time += (
+                    inference_time  # Accumulate total inference time
+                )
 
-                mse = F.mse_loss(outputs.squeeze(dim=1), data.y)  # Mean Squared Error (MSE)
-                mae = F.l1_loss(outputs.squeeze(dim=1), data.y)  # Mean Absolute Error (MAE)
+                mse = F.mse_loss(
+                    outputs.squeeze(dim=1), data.y
+                )  # Mean Squared Error (MSE)
+                mae = F.l1_loss(
+                    outputs.squeeze(dim=1), data.y
+                )  # Mean Absolute Error (MAE)
 
                 # Collect predictions and targets for R² calculation
                 all_preds.append(outputs.squeeze(dim=1).cpu().numpy())
@@ -178,11 +207,21 @@ class GNNTrainer(ModelTrainer):
         avg_mae = total_mae / len(self.data_loaders.test_dataloader)
 
         # Output test results
-        print(f"Test MSE: {avg_mse:.6f}, Test MAE: {avg_mae:.6f}, Max MAE: {max_mae:.6f}, Test R²: {test_r2:.4f}")
-        print(f"Total inference time: {total_inference_time:.2f}s for {total_samples} samples")
+        print(
+            f"Test MSE: {avg_mse:.6f}, Test MAE: {avg_mae:.6f}, Max MAE: {max_mae:.6f}, Test R²: {test_r2:.4f}"
+        )
+        print(
+            f"Total inference time: {total_inference_time:.2f}s for {total_samples} samples"
+        )
 
-        scores = {'Train Best MSE': self._train_best_mse, 'Best model R2': self._train_best_r2, 'Test MSE': avg_mse, 'Test MAE': avg_mae,
-                  'Test Max MAE': max_mae, 'Test R2': test_r2.item()}
+        scores = {
+            "Train Best MSE": self._train_best_mse,
+            "Best model R2": self._train_best_r2,
+            "Test MSE": avg_mse,
+            "Test MAE": avg_mae,
+            "Test Max MAE": max_mae,
+            "Test R2": test_r2.item(),
+        }
         self.result_collector.save_test_scores(scores)
 
     @override
@@ -190,10 +229,14 @@ class GNNTrainer(ModelTrainer):
         """Load a saved model and test it."""
         this_model = self.model(config=self.config).to(self.device)
         if self.config.environment.cuda and torch.cuda.device_count() > 1:
-            this_model = torch.nn.DataParallel(this_model, device_ids=self.config.environment.device_id)
+            this_model = torch.nn.DataParallel(
+                this_model, device_ids=self.config.environment.device_id
+            )
 
-        best_model_path = os.path.join(self.config.outputs.model.best_model_path,
-                                       f'{self.config.exp_name}_best_model.pth')
+        best_model_path = os.path.join(
+            self.config.outputs.model.best_model_path,
+            f"{self.config.exp_name}_best_model.pth",
+        )
         print(f"Load best model: {best_model_path}")
         this_model.load_state_dict(torch.load(best_model_path))
 

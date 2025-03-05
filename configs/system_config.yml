@@ -1,5 +1,6 @@
-model_arch: POINTNET
-model_name: RegPointNet
+model_arch: POINTNET  # can be override by hyper_parameters.csv file
+model_name: RegPointNet # can be override by hyper_parameters.csv file
+experiment_batch_name: training_constant
 base_path: /work/home/ac3jvu5s13/Chalmers/code/cfd-aero-pytorch
 
 datasets:
@@ -8,18 +9,21 @@ datasets:
     target_data_path: inputs/ahmed_ml/targets.csv
     id_col: "run"
     target_col: " cd"
+    target_col_alias: "Drag"  # use to keep same name in target
     subset_dir: inputs/ahmed_ml/subset
   WindsorML:
     stl_path: inputs/windsor_ml/stl
     target_data_path: inputs/windsor_ml/targets.csv
     id_col: "run"
-    target_col: "cd"
+    target_col: " cd"
+    target_col_alias: "Drag"  # use to keep same name in target
     subset_dir: inputs/windsor_ml/subset
   DrivAerML:
     stl_path: inputs/drivaer_ml/stl
     target_data_path: inputs/drivaer_ml/targets.csv
     id_col: "Design"
     target_col: "Average Cd"
+    target_col_alias: "Drag"  # use to keep same name in target
     subset_dir: inputs/drivaer_ml/subset
 
 

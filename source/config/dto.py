@@ -9,6 +9,7 @@ class DatasetsConfig:
     target_data_path: str
     id_col: str
     target_col: str
+    target_col_alias: str
     subset_dir: str
 
 
@@ -66,6 +67,7 @@ class OutputsConfig:
 class Config:
     model_arch: str
     model_name: str
+    experiment_batch_name: str
     exp_name: str
     base_path: str
     datasets: Dict[str, DatasetsConfig]
@@ -76,9 +78,17 @@ class Config:
     def __post_init__(self):
         for _, dataset in self.datasets.items():
             dataset.stl_path = os.path.join(self.base_path, dataset.stl_path)
-            dataset.target_data_path = os.path.join(self.base_path, dataset.target_data_path)
+            dataset.target_data_path = os.path.join(
+                self.base_path, dataset.target_data_path
+            )
             dataset.subset_dir = os.path.join(self.base_path, dataset.subset_dir)
-        self.outputs.preprocessed_data = os.path.join(self.base_path, self.outputs.preprocessed_data)
+        self.outputs.preprocessed_data = os.path.join(
+            self.base_path, self.outputs.preprocessed_data
+        )
         self.outputs.log_path = os.path.join(self.base_path, self.outputs.log_path)
-        self.outputs.model.best_model_path = os.path.join(self.base_path, self.outputs.model.best_model_path)
-        self.outputs.model.best_scores_path = os.path.join(self.base_path, self.outputs.model.best_scores_path)
+        self.outputs.model.best_model_path = os.path.join(
+            self.base_path, self.outputs.model.best_model_path
+        )
+        self.outputs.model.best_scores_path = os.path.join(
+            self.base_path, self.outputs.model.best_scores_path
+        )

@@ -20,7 +20,9 @@ class ModelTrainer:
         self.model = model
         self.data_loaders = data_loaders
         self.result_collector = ResultCollector(self.config)
-        self.device = torch.device("cuda" if torch.cuda.is_available() and config.environment.cuda else "cpu")
+        self.device = torch.device(
+            "cuda" if torch.cuda.is_available() and config.environment.cuda else "cpu"
+        )
         print(self.device)
 
     @abstractmethod

@@ -19,8 +19,15 @@ class AhmedMLDataset(Dataset):
     PyTorch Dataset class for the AhmedML dataset, handling loading, transforming, and augmenting 3D car models.
     """
 
-    def __init__(self, config: Config, root_dir: str, csv_file: str, num_points: int, transform: Optional[Callable] = None,
-                 pointcloud_exist: bool = False):
+    def __init__(
+        self,
+        config: Config,
+        root_dir: str,
+        csv_file: str,
+        num_points: int,
+        transform: Optional[Callable] = None,
+        pointcloud_exist: bool = False,
+    ):
         """
         Initializes the AhmedMLDataset instance.
 
@@ -77,7 +84,9 @@ class AhmedMLDataset(Dataset):
         normalized_data = (data - mean_vals) / (max_vals - min_vals)
         return normalized_data
 
-    def _sample_or_pad_vertices(self, vertices: torch.Tensor, num_points: int) -> torch.Tensor:
+    def _sample_or_pad_vertices(
+        self, vertices: torch.Tensor, num_points: int
+    ) -> torch.Tensor:
         """
         Subsamples or pads the vertices of the model to a fixed number of points.
 
@@ -109,7 +118,9 @@ class AhmedMLDataset(Dataset):
             # logging.error(f"Point cloud file {load_path} does not exist or is empty.")
             return None
 
-    def __getitem__(self, idx: int, apply_augmentations: bool = True) -> Tuple[torch.Tensor, torch.Tensor]:
+    def __getitem__(
+        self, idx: int, apply_augmentations: bool = True
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Retrieves a sample and its corresponding label from the dataset, with an option to apply augmentations.
 
@@ -141,11 +152,13 @@ class AhmedMLDataset(Dataset):
             else:
                 geometry_path = os.path.join(self.root_dir, f"ahmed_{design_id}.stl")
                 try:
-                    mesh = trimesh.load(geometry_path, force='mesh')
+                    mesh = trimesh.load(geometry_path, force="mesh")
                     vertices = torch.tensor(mesh.vertices, dtype=torch.float32)
                     vertices = self._sample_or_pad_vertices(vertices, self.num_points)
                 except Exception as e:
-                    logging.error(f"Failed to load STL file: {geometry_path}. Error: {e}")
+                    logging.error(
+                        f"Failed to load STL file: {geometry_path}. Error: {e}"
+                    )
                     raise
 
             if apply_augmentations:
@@ -161,8 +174,12 @@ class AhmedMLDataset(Dataset):
             self.cache[idx] = (point_cloud_normalized, cd_value)
             return point_cloud_normalized, cd_value
 
-    def split_data(self, train_ratio: float = 0.7, val_ratio: float = 0.15, test_ratio: float = 0.15) -> Tuple[
-        List[int], List[int], List[int]]:
+    def split_data(
+        self,
+        train_ratio: float = 0.7,
+        val_ratio: float = 0.15,
+        test_ratio: float = 0.15,
+    ) -> Tuple[List[int], List[int], List[int]]:
         """
         Splits the dataset into training, validation, and test sets.
 
@@ -180,7 +197,9 @@ class AhmedMLDataset(Dataset):
         train_size = int(train_ratio * num_samples)
         val_size = int(val_ratio * num_samples)
         test_size = num_samples - train_size - val_size
-        train_indices, val_indices, test_indices = random_split(indices, [train_size, val_size, test_size])
+        train_indices, val_indices, test_indices = random_split(
+            indices, [train_size, val_size, test_size]
+        )
         return train_indices, val_indices, test_indices
 
     def visualize_mesh(self, idx):
@@ -199,19 +218,21 @@ class AhmedMLDataset(Dataset):
         geometry_path = os.path.join(self.root_dir, f"ahmed_{design_id}.stl")
 
         try:
-            mesh = trimesh.load(geometry_path, force='mesh')
+            mesh = trimesh.load(geometry_path, force="mesh")
         except Exception as e:
             logging.error(f"Failed to load STL file: {geometry_path}. Error: {e}")
             raise
 
         pv_mesh = pv.wrap(mesh)
         plotter = pv.Plotter()
-        plotter.add_mesh(pv_mesh, color='lightgrey', show_edges=True)
+        plotter.add_mesh(pv_mesh, color="lightgrey", show_edges=True)
         plotter.add_axes()
 
-        camera_position = [(-11.073024242161921, -5.621499358347753, 5.862225824910342),
-                           (1.458462064391673, 0.002314306982062475, 0.6792134746589196),
-                           (0.34000174095454166, 0.10379556639001211, 0.9346792479485448)]
+        camera_position = [
+            (-11.073024242161921, -5.621499358347753, 5.862225824910342),
+            (1.458462064391673, 0.002314306982062475, 0.6792134746589196),
+            (0.34000174095454166, 0.10379556639001211, 0.9346792479485448),
+        ]
         plotter.camera_position = camera_position
         plotter.show()
 
@@ -231,7 +252,7 @@ class AhmedMLDataset(Dataset):
         geometry_path = os.path.join(self.root_dir, f"ahmed_{design_id}.stl")
 
         try:
-            mesh = trimesh.load(geometry_path, force='mesh')
+            mesh = trimesh.load(geometry_path, force="mesh")
             pv_mesh = pv.wrap(mesh)
         except Exception as e:
             logging.error(f"Failed to load STL file: {geometry_path}. Error: {e}")
@@ -240,9 +261,13 @@ class AhmedMLDataset(Dataset):
         plotter = pv.Plotter()
         sns_blue = sns.color_palette("colorblind")[0]
 
-        plotter.add_mesh(pv_mesh, color='lightgrey', show_edges=True, edge_color='black')
+        plotter.add_mesh(
+            pv_mesh, color="lightgrey", show_edges=True, edge_color="black"
+        )
         nodes = pv_mesh.points
-        plotter.add_points(nodes, color=sns_blue, point_size=5, render_points_as_spheres=True)
+        plotter.add_points(
+            nodes, color=sns_blue, point_size=5, render_points_as_spheres=True
+        )
         plotter.add_axes()
         plotter.show()
 
@@ -269,16 +294,24 @@ class AhmedMLDataset(Dataset):
         plotter = pv.Plotter()
 
         # Add the point cloud to the plotter with color mapping based on the z-coordinate
-        plotter.add_points(point_cloud, scalars="colors", cmap="Blues", point_size=3, render_points_as_spheres=True)
+        plotter.add_points(
+            point_cloud,
+            scalars="colors",
+            cmap="Blues",
+            point_size=3,
+            render_points_as_spheres=True,
+        )
 
         # Enable Eye-Dome Lighting for better depth perception
         plotter.enable_eye_dome_lighting()
 
         # Add axes for orientation and display the plotter window
         plotter.add_axes()
-        camera_position = [(-11.073024242161921, -5.621499358347753, 5.862225824910342),
-                           (1.458462064391673, 0.002314306982062475, 0.6792134746589196),
-                           (0.34000174095454166, 0.10379556639001211, 0.9346792479485448)]
+        camera_position = [
+            (-11.073024242161921, -5.621499358347753, 5.862225824910342),
+            (1.458462064391673, 0.002314306982062475, 0.6792134746589196),
+            (0.34000174095454166, 0.10379556639001211, 0.9346792479485448),
+        ]
 
         # Set the camera position
         plotter.camera_position = camera_position
@@ -313,25 +346,30 @@ class AhmedMLDataset(Dataset):
         # Display the original point cloud in the top left corner of the grid
         plotter.subplot(0, 0)  # Select the first subplot
         plotter.add_text("Original Point Cloud", font_size=10)  # Add descriptive text
-        plotter.add_mesh(original_pc, color='black', point_size=3)  # Add the original point cloud to the plot
+        plotter.add_mesh(
+            original_pc, color="black", point_size=3
+        )  # Add the original point cloud to the plot
 
         # Display the translated point cloud in the top right corner of the grid
         plotter.subplot(0, 1)  # Select the second subplot
         plotter.add_text("Translated Point Cloud", font_size=10)  # Add descriptive text
-        plotter.add_mesh(pv.PolyData(translated_pc.numpy()), color='lightblue',
-                         point_size=3)  # Add the translated point cloud to the plot
+        plotter.add_mesh(
+            pv.PolyData(translated_pc.numpy()), color="lightblue", point_size=3
+        )  # Add the translated point cloud to the plot
 
         # Display the jittered point cloud in the bottom left corner of the grid
         plotter.subplot(1, 0)  # Select the third subplot
         plotter.add_text("Jittered Point Cloud", font_size=10)  # Add descriptive text
-        plotter.add_mesh(pv.PolyData(jittered_pc.numpy()), color='lightgreen',
-                         point_size=3)  # Add the jittered point cloud to the plot
+        plotter.add_mesh(
+            pv.PolyData(jittered_pc.numpy()), color="lightgreen", point_size=3
+        )  # Add the jittered point cloud to the plot
 
         # Display the dropped point cloud in the bottom right corner of the grid
         plotter.subplot(1, 1)  # Select the fourth subplot
         plotter.add_text("Dropped Point Cloud", font_size=10)  # Add descriptive text
-        plotter.add_mesh(pv.PolyData(dropped_pc.numpy()), color='salmon',
-                         point_size=3)  # Add the dropped point cloud to the plot
+        plotter.add_mesh(
+            pv.PolyData(dropped_pc.numpy()), color="salmon", point_size=3
+        )  # Add the dropped point cloud to the plot
 
         # Display the plot with all point clouds
         plotter.show()
@@ -342,7 +380,9 @@ class AhmedMLGNNDataset(Dataset):
     PyTorch Dataset for loading and processing the AhmedML dataset into graph format suitable for GNNs.
     """
 
-    def __init__(self, config: Config, root_dir: str, csv_file: str, normalize: bool = True):
+    def __init__(
+        self, config: Config, root_dir: str, csv_file: str, normalize: bool = True
+    ):
         """
         Initialize the dataset.
 
@@ -405,14 +445,16 @@ class AhmedMLGNNDataset(Dataset):
 
         # Load the mesh from STL
         try:
-            mesh = trimesh.load(stl_path, force='mesh')
+            mesh = trimesh.load(stl_path, force="mesh")
         except Exception as e:
             logging.error(f"Failed to load STL file: {stl_path}. Error: {e}")
             raise
 
         # Convert mesh to graph
         edge_index = torch.tensor(np.array(mesh.edges).T, dtype=torch.long)
-        x = torch.tensor(mesh.vertices, dtype=torch.float)  # Using vertex positions as features
+        x = torch.tensor(
+            mesh.vertices, dtype=torch.float
+        )  # Using vertex positions as features
 
         if self.normalize:
             x = self.min_max_normalize(x)
@@ -438,7 +480,7 @@ class AhmedMLGNNDataset(Dataset):
         geometry_path = os.path.join(self.root_dir, f"ahmed_{design_id}.stl")
 
         try:
-            mesh = trimesh.load(geometry_path, force='mesh')
+            mesh = trimesh.load(geometry_path, force="mesh")
             pv_mesh = pv.wrap(mesh)
         except Exception as e:
             logging.error(f"Failed to load STL file: {geometry_path}. Error: {e}")
@@ -448,16 +490,22 @@ class AhmedMLGNNDataset(Dataset):
         sns_blue = sns.color_palette("colorblind")[0]
 
         # Add the mesh to the plotter with light grey color
-        plotter.add_mesh(pv_mesh, color='lightgrey', show_edges=True, edge_color='black')
+        plotter.add_mesh(
+            pv_mesh, color="lightgrey", show_edges=True, edge_color="black"
+        )
 
         # Highlight nodes as spheres
         nodes = pv_mesh.points
-        plotter.add_points(nodes, color=sns_blue, point_size=5, render_points_as_spheres=True)  # Increase point_size as needed
+        plotter.add_points(
+            nodes, color=sns_blue, point_size=5, render_points_as_spheres=True
+        )  # Increase point_size as needed
 
         plotter.add_axes()
-        camera_position = [(-11.073024242161921, -5.621499358347753, 5.862225824910342),
-                           (1.458462064391673, 0.002314306982062475, 0.6792134746589196),
-                           (0.34000174095454166, 0.10379556639001211, 0.9346792479485448)]
+        camera_position = [
+            (-11.073024242161921, -5.621499358347753, 5.862225824910342),
+            (1.458462064391673, 0.002314306982062475, 0.6792134746589196),
+            (0.34000174095454166, 0.10379556639001211, 0.9346792479485448),
+        ]
 
         # Set the camera position
         plotter.camera_position = camera_position
@@ -479,15 +527,22 @@ class AhmedMLGNNDataset(Dataset):
         lines[:, 1:] = edges
 
         mesh.lines = lines
-        mesh['scalars'] = np.random.rand(mesh.n_points)  # Random colors for nodes
+        mesh["scalars"] = np.random.rand(mesh.n_points)  # Random colors for nodes
 
         plotter = pv.Plotter()
-        plotter.add_mesh(mesh, show_edges=True, line_width=1, color='white', point_size=8, render_points_as_spheres=True)
-        plotter.add_scalar_bar('Scalar Values', 'scalars')
+        plotter.add_mesh(
+            mesh,
+            show_edges=True,
+            line_width=1,
+            color="white",
+            point_size=8,
+            render_points_as_spheres=True,
+        )
+        plotter.add_scalar_bar("Scalar Values", "scalars")
 
         # Optional: highlight edges for clarity
         edge_points = mesh.points[edges.flatten()]
         lines = pv.lines_from_points(edge_points)
-        plotter.add_mesh(lines, color='blue', line_width=2)
+        plotter.add_mesh(lines, color="blue", line_width=2)
 
         plotter.show()

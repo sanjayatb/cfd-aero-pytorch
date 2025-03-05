@@ -28,8 +28,11 @@ class Runner:
             raise NotImplemented(f"{model_arc} is not implemented")
         try:
             module = importlib.import_module(module_name)  # Import the module
-            classes = {name: cls for name, cls in inspect.getmembers(module, inspect.isclass)
-                       if cls.__module__ == module_name}  # Filter only classes from this module
+            classes = {
+                name: cls
+                for name, cls in inspect.getmembers(module, inspect.isclass)
+                if cls.__module__ == module_name
+            }  # Filter only classes from this module
             return classes.keys()
         except ModuleNotFoundError:
             raise ImportError(f"Module '{module_name}' not found!")
@@ -37,13 +40,26 @@ class Runner:
     def parse_args(self):
         parser = argparse.ArgumentParser(description="Run Experiment")
 
-        parser.add_argument("--model-arch", type=str, required=True, choices=[e.value for e in ModelArchitecture])
+        parser.add_argument(
+            "--model-arch",
+            type=str,
+            required=True,
+            choices=[e.value for e in ModelArchitecture],
+        )
         args, unknown = parser.parse_known_args()
 
         available_models = self.available_models(args.model_arch)
 
-        parser.add_argument("--model-name", type=str, required=True, choices=available_models)
-        parser.add_argument("--dataset-name", type=str, required=True, choices=[e.value for e in CFDDataset])
+        parser.add_argument(
+            "--model-name", type=str, required=True, choices=available_models
+        )
+        parser.add_argument(
+            "--dataset-name",
+            type=str,
+            required=True,
+            choices=[e.value for e in CFDDataset],
+        )
+        parser.add_argument("--experiment-batch-name", type=str, required=False)
         parser.add_argument("--train-size", type=int, required=False)
         parser.add_argument("--batch-size", type=int, required=False)
         parser.add_argument("--epochs", type=int, required=False)

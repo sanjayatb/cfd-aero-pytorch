@@ -35,7 +35,9 @@ class RegPointNet(Model):
         self.conv3 = nn.Conv1d(1024, 1024, kernel_size=1, bias=False)
         self.conv4 = nn.Conv1d(1024, 1024, kernel_size=1, bias=False)
         self.conv5 = nn.Conv1d(1024, 1024, kernel_size=1, bias=False)
-        self.conv6 = nn.Conv1d(1024, config.parameters.model.emb_dims, kernel_size=1, bias=False)
+        self.conv6 = nn.Conv1d(
+            1024, config.parameters.model.emb_dims, kernel_size=1, bias=False
+        )
 
         # Batch normalization layers
         self.bn1 = nn.BatchNorm1d(512)
@@ -50,7 +52,9 @@ class RegPointNet(Model):
         self.dropout_linear = nn.Dropout(p=config.parameters.model.dropout)
 
         # Residual connection layer
-        self.conv_shortcut = nn.Conv1d(3, config.parameters.model.emb_dims, kernel_size=1, bias=False)
+        self.conv_shortcut = nn.Conv1d(
+            3, config.parameters.model.emb_dims, kernel_size=1, bias=False
+        )
         self.bn_shortcut = nn.BatchNorm1d(config.parameters.model.emb_dims)
 
         # Linear layers for regression output
@@ -187,9 +191,12 @@ class PointNetWithSelfAttention(Model):
 
 class PositionalEncoding(nn.Module):
     """Learnable positional encoding for point clouds"""
+
     def __init__(self, in_dim):
         super(PositionalEncoding, self).__init__()
-        self.linear = nn.Linear(3, in_dim)  # Convert (x, y, z) coordinates to embedding space
+        self.linear = nn.Linear(
+            3, in_dim
+        )  # Convert (x, y, z) coordinates to embedding space
 
     def forward(self, x):
         """
@@ -218,7 +225,7 @@ class PointNetWithTorchTransformer(Model):
             dim_feedforward=1024,
             dropout=dropout,
             activation="relu",
-            batch_first=True  # Ensures batch dimension is first
+            batch_first=True,  # Ensures batch dimension is first
         )
         self.transformer = TransformerEncoder(encoder_layer, num_layers=num_layers)
 
@@ -260,3 +267,4 @@ class PointNetWithTorchTransformer(Model):
         x = self.final_linear(x)  # Output shape: (batch_size, 1)
 
         return x
+

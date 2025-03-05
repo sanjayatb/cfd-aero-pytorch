@@ -14,13 +14,17 @@ class ResultCollector:
         self.config = config
 
     def save_best_model(self, model_dict, best_mse):
-        best_model_path = os.path.join(self.config.outputs.model.best_model_path,
-                                       f'{self.config.exp_name}_best_model.pth')
+        best_model_path = os.path.join(
+            self.config.outputs.model.best_model_path,
+            f"{self.config.exp_name}_best_model.pth",
+        )
         torch.save(model_dict, best_model_path)
         print(f"New best model saved with MSE: {best_mse:.6f}")
 
     def save_test_scores(self, scores):
-        hyperparameters = self.config.parameters.data.__dict__ | self.config.parameters.model.__dict__
+        hyperparameters = (
+                self.config.parameters.data.__dict__ | self.config.parameters.model.__dict__
+        )
 
         ### TODO select parameter
         hyperparameters.pop("k")
@@ -28,14 +32,22 @@ class ResultCollector:
         hyperparameters.pop("linear_sizes")
         hyperparameters.pop("output_channels")
 
-        new_entry = {"Model Arc": self.config.model_arch,
-                     "Model": self.config.model_name, **hyperparameters, **scores,
-                     "best_model": f'{self.config.exp_name}_best_model.pth'}
+        new_entry = {
+            "Model Arc": self.config.model_arch,
+            "Model": self.config.model_name,
+            **hyperparameters,
+            **scores,
+            "best_model": f"{self.config.exp_name}_best_model.pth",
+        }
 
         # Define CSV file path
         date = datetime.now().strftime("%Y-%m-%d")
-        csv_filename = os.path.join(self.config.outputs.model.best_scores_path,
-                                    f"{date}_set_of_experiment_scores.csv")
+        dataset_conf = self.config.datasets.get(self.config.parameters.data.dataset)
+
+        csv_filename = os.path.join(
+            self.config.outputs.model.best_scores_path,
+            f"{date}_{dataset_conf.target_col_alias}_{self.config.experiment_batch_name}_experiment_scores.csv",
+        )
         os.makedirs(self.config.outputs.model.best_scores_path, exist_ok=True)
         # Check if file exists
         if os.path.exists(csv_filename):
@@ -50,7 +62,9 @@ class ResultCollector:
             df_new = pd.DataFrame([new_entry])
             df_combined = pd.concat([df_existing, df_new], ignore_index=True)
 
-            df_unique = df_combined.drop_duplicates(subset=hyperparam_keys, keep='first')
+            df_unique = df_combined.drop_duplicates(
+                subset=hyperparam_keys, keep="first"
+            )
             df_unique.to_csv(csv_filename, index=False)
             print("New experiment results appended to CSV.")
         else:
