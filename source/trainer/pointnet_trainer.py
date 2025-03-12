@@ -10,14 +10,14 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 from source.trainer.model_trainer import ModelTrainer
 import torch.nn.functional as F
 
-from source.utils.model import r2_score
+from source.utils.model import compute_r2_score
 
 
 class PointNetTrainer(ModelTrainer):
     def __init__(self, config, model, data_loaders):
         super().__init__(config, model, data_loaders)
         self._train_best_mse = None
-        self._train_best_r2 = None
+        self._train_best_r2 = 0
 
     @override
     def setup_data(self):
@@ -137,7 +137,8 @@ class PointNetTrainer(ModelTrainer):
             all_targets = np.concatenate(all_targets)
 
             # Compute R² for the entire validation dataset
-            val_r2 = r2_score(all_targets, all_preds)
+            val_r2 = compute_r2_score(all_targets, all_preds)
+            self.result_collector.add_r2_scores(val_r2)
 
             avg_val_loss = val_loss / len(self.data_loaders.val_dataloader)
             val_losses.append(avg_val_loss)
@@ -147,18 +148,20 @@ class PointNetTrainer(ModelTrainer):
             print(
                 f"Epoch {epoch + 1} Validation Loss: {avg_val_loss:.4f}, Avg Inference Time: {avg_inference_time:.4f}s"
             )
-            print(f"Validation R²: {val_r2:.4f}")
+            print(f"Epoch {epoch + 1} Validation R²: {val_r2:.4f}")
 
             # Update the best model if the current model outperforms previous models
-            if avg_val_loss < best_mse:
+            if val_r2 > self._train_best_r2 and avg_val_loss < best_mse:
                 best_mse = avg_val_loss
-                self.result_collector.save_best_model(model.state_dict(), best_mse)
+                self._train_best_r2 = val_r2
                 self._train_best_mse = best_mse
-                self._train_best_r2 = val_r2.item()
+                self.result_collector.save_best_model(model.state_dict(), best_mse)
 
             scheduler.step(
                 avg_val_loss
             )  # Update the learning rate based on the validation loss
+
+        #self.result_collector.save_epoch_data()
 
     @override
     def test(self, model: torch.nn.Module):
@@ -175,9 +178,7 @@ class PointNetTrainer(ModelTrainer):
             for data, targets in self.data_loaders.test_dataloader:
                 start_time = time.time()  # Start time for inference
 
-                data, targets = data.to(self.device), targets.to(self.device).squeeze(
-                    dim=1
-                )
+                data, targets = data.to(self.device), targets.to(self.device).squeeze()
                 data = data.permute(0, 2, 1)
                 outputs = model(data)
 
@@ -188,14 +189,14 @@ class PointNetTrainer(ModelTrainer):
                 )
 
                 mse = F.mse_loss(
-                    outputs.squeeze(dim=1), targets
+                    outputs.squeeze(), targets
                 )  # Mean Squared Error (MSE)
                 mae = F.l1_loss(
-                    outputs.squeeze(dim=1), targets
+                    outputs.squeeze(), targets
                 )  # Mean Absolute Error (MAE),
 
                 # Collect predictions and targets for R² calculation
-                all_preds.append(outputs.squeeze(dim=1).cpu().numpy())
+                all_preds.append(outputs.squeeze().cpu().numpy())
                 all_targets.append(targets.cpu().numpy())
 
                 # Accumulate metrics to compute averages later
@@ -210,8 +211,11 @@ class PointNetTrainer(ModelTrainer):
         # Concatenate all predictions and targets
         all_preds = np.concatenate(all_preds)
         all_targets = np.concatenate(all_targets)
-        test_r2 = r2_score(all_targets, all_preds)
+        test_r2 = compute_r2_score(all_targets, all_preds)
 
+        self.result_collector.targets = all_targets
+        self.result_collector.predictions = all_preds
+        self.result_collector.save_predictions()
         # Output test results
         print(
             f"Test MSE: {avg_mse:.6f}, Test MAE: {avg_mae:.6f}, Max MAE: {max_mae:.6f}, Test R²: {test_r2:.4f}"
@@ -226,7 +230,7 @@ class PointNetTrainer(ModelTrainer):
             "Test MSE": avg_mse,
             "Test MAE": avg_mae,
             "Test Max MAE": max_mae,
-            "Test R2": test_r2.item(),
+            "Test R2": test_r2,
         }
         self.result_collector.save_test_scores(scores)
 
@@ -244,6 +248,9 @@ class PointNetTrainer(ModelTrainer):
             f"{self.config.exp_name}_best_model.pth",
         )
         print(f"Load best model: {best_model_path}")
-        this_model.load_state_dict(torch.load(best_model_path))
 
-        self.test(this_model)
+        if not os.path.exists(best_model_path):
+            print("No valuable model.")
+        else:
+            this_model.load_state_dict(torch.load(best_model_path))
+            self.test(this_model)

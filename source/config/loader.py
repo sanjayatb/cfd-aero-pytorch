@@ -64,6 +64,10 @@ def override_configs(config: Config, args):
         config.parameters.model.lr = args.lr
     if args.dropout:
         config.parameters.model.dropout = args.dropout
+    if args.conv_layers:
+        config.parameters.model.conv_layers = list(map(int, args.conv_layers.strip("[]").split(":")))
+    if args.fc_layers:
+        config.parameters.model.fc_layers = list(map(int, args.fc_layers.strip("[]").split(":")))
 
     if not config.exp_name:
         date = datetime.now().strftime("%Y-%m-%d")

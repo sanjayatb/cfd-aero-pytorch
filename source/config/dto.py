@@ -39,8 +39,8 @@ class ModelParams:
     emb_dims: int
     k: int
     optimizer: str
-    channels: List[int]
-    linear_sizes: List[int]
+    conv_layers: List[int]
+    fc_layers: List[int]
     output_channels: int
 
 

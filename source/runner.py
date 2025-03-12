@@ -67,6 +67,8 @@ class Runner:
         parser.add_argument("--lr", type=float, required=False)
         parser.add_argument("--dropout", type=float, required=False)
         parser.add_argument("--exp-name", type=str, required=False, default=None)
+        parser.add_argument("--conv-layers", type=str, required=False, default=None)
+        parser.add_argument("--fc-layers", type=str, required=False, default=None)
 
         args = parser.parse_args()
 

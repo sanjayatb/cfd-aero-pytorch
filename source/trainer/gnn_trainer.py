@@ -11,14 +11,14 @@ from typing_extensions import override
 import torch.nn.functional as F
 
 from source.trainer.model_trainer import ModelTrainer
-from source.utils.model import r2_score
+from source.utils.model import compute_r2_score
 
 
 class GNNTrainer(ModelTrainer):
     def __init__(self, config, model, data_loaders):
         super().__init__(config, model, data_loaders)
         self._train_best_mse = None
-        self._train_best_r2 = None
+        self._train_best_r2 = 0
 
     @override
     def setup_data(self):
@@ -82,7 +82,7 @@ class GNNTrainer(ModelTrainer):
 
                 optimizer.zero_grad()
                 outputs = model(data)
-                loss = F.mse_loss(outputs.squeeze(dim=1), data.y)
+                loss = F.mse_loss(outputs.squeeze(), data.y)
 
                 loss.backward()
                 optimizer.step()
@@ -113,11 +113,11 @@ class GNNTrainer(ModelTrainer):
                     inference_start_time = time.time()
                     data = data.to(self.device)
                     outputs = model(data)
-                    loss = F.mse_loss(outputs.squeeze(dim=1), data.y)
+                    loss = F.mse_loss(outputs.squeeze(), data.y)
                     val_loss += loss.item()
 
                     # Collect predictions and targets for R² calculation
-                    all_preds.append(outputs.squeeze(dim=1).cpu().numpy())
+                    all_preds.append(outputs.squeeze().cpu().numpy())
                     all_targets.append(data.y.cpu().numpy())
 
                     inference_duration = time.time() - inference_start_time
@@ -136,15 +136,15 @@ class GNNTrainer(ModelTrainer):
             all_targets = np.concatenate(all_targets)
 
             # Compute R² for the entire validation dataset
-            val_r2 = r2_score(all_preds, all_targets)
+            val_r2 = compute_r2_score(all_preds, all_targets)
             print(f"Validation R²: {val_r2:.4f}")
 
             # Check if this is the best model based on MSE
-            if avg_val_loss < best_mse:
+            if val_r2 > self._train_best_r2 and avg_val_loss < best_mse:
                 best_mse = avg_val_loss
+                self._train_best_r2 = val_r2
                 self.result_collector.save_best_model(model.state_dict(), best_mse)
                 self._train_best_mse = best_mse
-                self._train_best_r2 = val_r2.item()
 
             # Step the scheduler based on the validation loss
             scheduler.step(avg_val_loss)
@@ -180,14 +180,14 @@ class GNNTrainer(ModelTrainer):
                 )
 
                 mse = F.mse_loss(
-                    outputs.squeeze(dim=1), data.y
+                    outputs.squeeze(), data.y
                 )  # Mean Squared Error (MSE)
                 mae = F.l1_loss(
-                    outputs.squeeze(dim=1), data.y
+                    outputs.squeeze(), data.y
                 )  # Mean Absolute Error (MAE)
 
                 # Collect predictions and targets for R² calculation
-                all_preds.append(outputs.squeeze(dim=1).cpu().numpy())
+                all_preds.append(outputs.squeeze().cpu().numpy())
                 all_targets.append(data.y.cpu().numpy())
 
                 # Accumulate metrics to compute averages later
@@ -201,7 +201,7 @@ class GNNTrainer(ModelTrainer):
         all_targets = np.concatenate(all_targets)
 
         # Compute R² for the entire test dataset
-        test_r2 = r2_score(all_preds, all_targets)
+        test_r2 = compute_r2_score(all_preds, all_targets)
         # Compute average metrics over the entire test set
         avg_mse = total_mse / len(self.data_loaders.test_dataloader)
         avg_mae = total_mae / len(self.data_loaders.test_dataloader)
@@ -220,7 +220,7 @@ class GNNTrainer(ModelTrainer):
             "Test MSE": avg_mse,
             "Test MAE": avg_mae,
             "Test Max MAE": max_mae,
-            "Test R2": test_r2.item(),
+            "Test R2": test_r2,
         }
         self.result_collector.save_test_scores(scores)
 

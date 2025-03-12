@@ -49,14 +49,14 @@ parameters:
     emb_dims: 1024
     k: 40
     optimizer: adam
-    channels:
+    conv_layers:
       - 6
       - 64
       - 128
       - 256
       - 512
       - 1024
-    linear_sizes:
+    fc_layers:
       - 128
       - 64
       - 32
