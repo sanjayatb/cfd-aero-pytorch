@@ -12,6 +12,7 @@ from torch_geometric.data import Data
 
 from source.config.dto import Config
 from source.data.augmentation import DataAugmentation
+from pathlib import Path
 
 
 class DrivAerNetDataset(Dataset):
@@ -20,13 +21,13 @@ class DrivAerNetDataset(Dataset):
     """
 
     def __init__(
-        self,
-        config: Config,
-        root_dir: str,
-        csv_file: str,
-        num_points: int,
-        transform: Optional[Callable] = None,
-        pointcloud_exist: bool = False,
+            self,
+            config: Config,
+            root_dir: str,
+            csv_file: str,
+            num_points: int,
+            transform: Optional[Callable] = None,
+            pointcloud_exist: bool = False,
     ):
         """
         Initializes the DrivAerNetDataset instance.
@@ -55,6 +56,14 @@ class DrivAerNetDataset(Dataset):
     def __len__(self) -> int:
         """Returns the total number of samples in the dataset."""
         return len(self.data_frame)
+
+    def get_all_file_names(self):
+        folder_path = Path(self.root_dir)
+        file_names = [file.stem for file in folder_path.iterdir() if file.is_file()]
+        if len(file_names) > self.config.parameters.data.max_total_samples:
+            return file_names[0:self.config.parameters.data.max_total_samples]
+        else:
+            return file_names
 
     def min_max_normalize(self, data: torch.Tensor) -> torch.Tensor:
         """
@@ -85,7 +94,7 @@ class DrivAerNetDataset(Dataset):
         return normalized_data
 
     def _sample_or_pad_vertices(
-        self, vertices: torch.Tensor, num_points: int
+            self, vertices: torch.Tensor, num_points: int
     ) -> torch.Tensor:
         """
         Subsamples or pads the vertices of the model to a fixed number of points.
@@ -119,7 +128,7 @@ class DrivAerNetDataset(Dataset):
             return None
 
     def __getitem__(
-        self, idx: int, apply_augmentations: bool = True
+            self, idx: int, apply_augmentations: bool = True
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Retrieves a sample and its corresponding label from the dataset, with an option to apply augmentations.
@@ -140,7 +149,7 @@ class DrivAerNetDataset(Dataset):
             row = self.data_frame.iloc[idx]
             dataset_conf = self.config.datasets.get(self.config.parameters.data.dataset)
             design_id = row[dataset_conf.id_col]
-            cd_value = row[dataset_conf.target_col]
+            target_value = row[dataset_conf.target_col]
 
             if self.pointcloud_exist:
                 vertices = self._load_point_cloud(design_id)
@@ -169,16 +178,16 @@ class DrivAerNetDataset(Dataset):
                 vertices = self.transform(vertices)
 
             point_cloud_normalized = self.min_max_normalize(vertices)
-            cd_value = torch.tensor(float(cd_value), dtype=torch.float32).view(-1)
+            target_value = torch.tensor(float(target_value), dtype=torch.float32).view(-1)
 
-            self.cache[idx] = (point_cloud_normalized, cd_value)
-            return point_cloud_normalized, cd_value
+            self.cache[idx] = (point_cloud_normalized, target_value)
+            return point_cloud_normalized, target_value
 
     def split_data(
-        self,
-        train_ratio: float = 0.7,
-        val_ratio: float = 0.15,
-        test_ratio: float = 0.15,
+            self,
+            train_ratio: float = 0.7,
+            val_ratio: float = 0.15,
+            test_ratio: float = 0.15,
     ) -> Tuple[List[int], List[int], List[int]]:
         """
         Splits the dataset into training, validation, and test sets.
@@ -382,7 +391,7 @@ class DrivAerNetGNNDataset(Dataset):
     """
 
     def __init__(
-        self, config: Config, root_dir: str, csv_file: str, normalize: bool = True
+            self, config: Config, root_dir: str, csv_file: str, normalize: bool = True
     ):
         """
         Initialize the dataset.

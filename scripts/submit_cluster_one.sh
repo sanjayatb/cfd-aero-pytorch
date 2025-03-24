@@ -41,13 +41,13 @@ fi
 RUNNING_COUNT=0
 
 # Skip the header and iterate through each row
-tail -n +2 "$CSV_FILE" | while IFS=, read -r dataset_name model_arch model_name train_size batch_size epochs num_points lr dropout
+tail -n +2 "$CSV_FILE" | while IFS=, read -r dataset_name model_arch model_name sample_size batch_size epochs num_points lr dropout
 do
     # Increment running experiment counter
     ((RUNNING_COUNT++))
 
     # Generate an experiment name dynamically
-    EXP_NAME="$(date +%Y%m%d)_${BATCH_NAME}_${dataset_name}_${model_arch}_${model_name}_ts${train_size}_bs${batch_size}_epochs${epochs}_pts${num_points}_lr${lr}_drop${dropout}"
+    EXP_NAME="$(date +%Y%m%d)_${BATCH_NAME}_${dataset_name}_${model_arch}_${model_name}_ds${sample_size}_bs${batch_size}_epochs${epochs}_pts${num_points}_lr${lr}_drop${dropout}"
 
     # Set unique log files per run
     OUTPUT_LOG="${LOG_DIR}/${EXP_NAME}.out"

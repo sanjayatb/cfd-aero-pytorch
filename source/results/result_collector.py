@@ -37,9 +37,11 @@ class ResultCollector:
 
         ### TODO select parameter
         hyperparameters.pop("k")
-        # hyperparameters.pop("conv_layers")
-        # hyperparameters.pop("fc_layers")
         hyperparameters.pop("output_channels")
+        if self.config.parameters.data.data_id_load_random:
+            hyperparameters.pop("training_size")
+            hyperparameters.pop("validation_size")
+            hyperparameters.pop("test_size")
 
         new_entry = {
             "Model Arc": self.config.model_arch,

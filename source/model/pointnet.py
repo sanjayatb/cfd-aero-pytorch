@@ -1,7 +1,7 @@
 from source.config.dto import Config
 from source.model.base import Model
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
-#from neuralop.models import FNO1d
+from neuralop.models import FNO1d
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -53,6 +53,20 @@ class SimplePointNet(Model):
                 x = self.dropout(x)
 
         return x  # (B, 1)
+
+
+class ShallowMLP(Model):
+    def __init__(self, config):
+        super(ShallowMLP, self).__init__(config)
+        self.fc1 = nn.Linear(3, 64)
+        self.fc2 = nn.Linear(64, 128)
+        self.fc3 = nn.Linear(128, 1)
+
+    def forward(self, x):
+        x = torch.mean(x, dim=-1)  # Global Average Pooling (B, 3)
+        x = torch.relu(self.fc1(x))
+        x = torch.relu(self.fc2(x))
+        return self.fc3(x)
 
 
 class PointNetFNO(Model):

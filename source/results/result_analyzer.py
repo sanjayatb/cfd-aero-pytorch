@@ -1,8 +1,130 @@
+import os.path
+import re
+
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
+import torch
+from sklearn.metrics import mean_squared_error, r2_score
+
+from source.trainer.trainer_factory import TrainerFactory
 
 
 class ResultViewer:
+
+    @staticmethod
+    def plot_true_vs_predicted_csv(folder, file_name):
+        df = pd.read_csv(f"{folder}{file_name}")
+
+        true_values = df["Targets"]
+        predicted_values = df["Prediction"]
+
+        r2 = r2_score(true_values, predicted_values)
+        mse = mean_squared_error(true_values, predicted_values)
+
+        def format_number(num):
+            if abs(num) >= 1e3 or abs(num) <= 1e-3:  # Scientific notation condition
+                return f"{num:.4e}"
+            return f"{num:.4f}"
+
+        r2_str = format_number(r2)
+        mse_str = format_number(mse)
+
+        plt.figure(figsize=(8, 6))
+        plt.scatter(true_values, predicted_values, alpha=0.6, edgecolors="k", label="Predictions")
+        plt.plot([true_values.min(), true_values.max()], [true_values.min(), true_values.max()], "r--",
+                 label="Ideal Fit")
+        plt.xlabel("True Values")
+        plt.ylabel("Predicted Values")
+        plt.title(f"True vs. Predicted Values (R2 = {r2_str}, MSE = {mse_str})")
+        plt.legend()
+        plt.grid()
+
+        pattern = re.compile(
+            r"(?P<date>\d{4}-\d{2}-\d{2})_"  # Match date (YYYY-MM-DD)
+            r"(?P<metric>\w+)_"  # Match metric (e.g., Drag)
+            r"(?P<timestamp>\d{8})_"  # Match timestamp (YYYYMMDD)
+            r"(?P<model_type>[\w]+)_"  # Match model type (e.g., drivaer)
+            r"best_variable_train_size_"  # Explicitly match this keyword
+            r"(?P<dataset>\w+)_"  # Match dataset (e.g., DrivAerML)
+            r"(?P<arch>\w+)_"  # Match model architecture (e.g., PointNet)
+            r"(?P<model>\w+)_"  # Match model name (e.g., SimplePointNet)
+            r"ts(?P<training_size>\d+)_"
+            r"bs(?P<batch_size>\d+)_"
+            r"epoc?h?s?(?P<epochs>\d+)_?"  # Allows both 'epochs' and 'epochs'
+            r"pts(?P<points>\d+)_"
+            r"lr(?P<learning_rate>[\d.]+)_"
+            r"drop(?P<dropout>[\d.]+)_"
+    r"\[(?P<conv_layers>[\d_]+)]_\[(?P<fc_layers>[\d_]+)]"  # Handles _ instead of :
+        )
+
+        # ✅ Extract components
+        match = pattern.match(file_name)
+        text_info = ""
+        if match:
+            extracted_data = match.groupdict()
+            extracted_data["conv_layers"] = extracted_data["conv_layers"].replace(":", " → ")  # Format Conv layers
+            extracted_data["fc_layers"] = extracted_data["fc_layers"].replace(":", " → ")  # Format FC layers
+
+            # ✅ Print extracted data
+            for key, value in extracted_data.items():
+                if key in ("model_type", "timestamp"):
+                    continue
+                text_info += f"{key}: {value}\n"
+        else:
+            print("Filename format does not match.")
+
+        plt.text(0.05, 0.95, text_info, fontsize=10, verticalalignment="top", transform=plt.gca().transAxes,
+                 bbox=dict(facecolor="white", alpha=0.6))
+
+        plt.savefig(f"../outputs/plots/drivaer_best_model_r2_{r2_str}.png")
+
+    @staticmethod
+    def plot_true_vs_predicted(config, model_path):
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        trainer = TrainerFactory.get_pointnet_trainer(config)
+        trainer.setup_data()
+
+        model = trainer.init_model()
+        param_dict = torch.load(model_path, map_location=device)
+        new_state_dict = {}
+        for key, value in param_dict.items():
+            new_key = key.replace("module.", "")  # Remove "module." prefix
+            new_state_dict[new_key] = value
+
+        model.load_state_dict(new_state_dict)
+        model.to(device)
+        model.eval()  # Set model to evaluation mode
+
+        test_loader = trainer.data_loaders.test_dataloader
+
+        # 🚀 Run Inference
+        true_values, predicted_values = [], []
+
+        with torch.no_grad():
+            for data, targets in test_loader:
+                data, targets = data.to(device), targets.to(device).squeeze()
+                outputs = model(data).squeeze()
+
+                true_values.extend(targets.cpu().numpy())
+                predicted_values.extend(outputs.cpu().numpy())
+
+        # 🚀 Convert to NumPy for Plotting
+        true_values = np.array(true_values)
+        predicted_values = np.array(predicted_values)
+
+        # 🚀 Plot True vs Predicted
+        plt.figure(figsize=(8, 6))
+        plt.scatter(true_values, predicted_values, alpha=0.6, edgecolors="k", label="Predictions")
+        plt.plot([true_values.min(), true_values.max()], [true_values.min(), true_values.max()], "r--",
+                 label="Ideal Fit")
+        plt.xlabel("True Values")
+        plt.ylabel("Predicted Values")
+        plt.title("True vs. Predicted Values")
+        plt.legend()
+        plt.grid()
+        plt.show()
 
     @staticmethod
     def training_size_vs_mse(result_file_path):
@@ -34,7 +156,7 @@ class ResultViewer:
             plt.annotate(
                 f"{dataset_name}: Best Test MSE: {best_test_mse:.4f}, Size: {best_training_size}",
                 xy=(best_training_size, best_test_mse),
-                xytext=(best_training_size - 100, best_test_mse + 0.02),  # Offset for better visibility
+                xytext=(best_training_size - 100, best_test_mse + 0.00001),  # Offset for better visibility
                 arrowprops=dict(arrowstyle="->", color="red"),
                 fontsize=9, color="red"
             )
@@ -101,7 +223,7 @@ class ResultViewer:
 
         # Labels and title
         plt.xlabel("Training Set Size")
-        plt.ylabel("MSE")
+        plt.ylabel("R2")
         plt.title(f"Train & Test R2 over Training Set Size.")
 
         # Add legend for different datasets
@@ -200,7 +322,6 @@ class ResultViewer:
         # Save the plot
         plt.savefig("../outputs/plots/train_test_mse_over_num_points.png")
 
-
     @staticmethod
     def num_of_points_vs_r2(result_file_path):
         # Load the CSV file
@@ -254,3 +375,24 @@ class ResultViewer:
 
         # Save the plot
         plt.savefig("../outputs/plots/train_test_r2_over_num_points.png")
+
+    def plot_r2_for_model(self, result_file_path):
+        # Load the CSV file
+        df = pd.read_csv(result_file_path)
+
+        # Create the plot
+        plt.figure(figsize=(8, 6))
+        grouped = df.groupby(["Model", "dataset"])["Best model R2"].mean().unstack()
+        # Plot grouped data
+        grouped.plot(kind="bar", figsize=(10, 5))
+
+        # Customize plot
+        plt.xlabel("Model")
+        plt.ylabel("R² Score")
+        plt.title("R² Scores for Different Models and Datasets")
+        plt.legend(title="Dataset")
+        plt.xticks(rotation=10)
+        plt.grid(axis="y")
+
+        # Save the plot
+        plt.savefig("../outputs/plots/r2_over_each_model.png")

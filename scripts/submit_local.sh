@@ -74,7 +74,7 @@ TOTAL_EXP=$(tail -n +2 $CSV_FILE | awk -F',' -v d="$FILTER_DATASET_NAME" -v m="$
 RUNNING_COUNT=0
 
 # Read the CSV and filter dynamically
-tail -n +2 $CSV_FILE | while IFS=, read -r dataset_name model_arch model_name train_size batch_size epochs num_points lr dropout
+tail -n +2 $CSV_FILE | while IFS=, read -r dataset_name model_arch model_name sample_size batch_size epochs num_points lr dropout conv_layers fc_layers
 do
     # Apply filtering if arguments are provided
     if [[ -n "$FILTER_DATASET_NAME" && "$dataset_name" != "$FILTER_DATASET_NAME" ]]; then
@@ -91,7 +91,7 @@ do
     ((RUNNING_COUNT++))
 
     # Generate an experiment name dynamically
-    EXP_NAME="$(date +%Y%m%d)_${dataset_name}_${model_arch}_${model_name}_ts${train_size}_bs${batch_size}_epochs${epochs}_pts${num_points}_lr${lr}_drop${dropout}"
+    EXP_NAME="$(date +%Y%m%d)_${dataset_name}_${model_arch}_${model_name}_ds${sample_size}_bs${batch_size}_epochs${epochs}_pts${num_points}_lr${lr}_drop${dropout}_cl${conv_layers}_fc${fc_layers}"
 
     # Print experiment progress
     echo "Running experiment $RUNNING_COUNT/$TOTAL_EXP: $EXP_NAME"
@@ -102,12 +102,14 @@ do
     --dataset-name "$dataset_name" \
     --model-arch "$model_arch" \
     --model-name "$model_name" \
-    --train-size "$train_size" \
+    --sample-size "$sample_size" \
     --batch-size "$batch_size" \
     --epochs "$epochs" \
     --num-points "$num_points" \
     --lr "$lr" \
     --dropout "$dropout" \
+    --conv-layers "$conv_layers" \
+    --fc-layers "$fc_layers" \
     --exp-name "$EXP_NAME"
 
     echo "Experiment $RUNNING_COUNT/$TOTAL_EXP completed: $EXP_NAME"

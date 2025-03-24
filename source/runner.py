@@ -90,7 +90,10 @@ class Runner:
 
         trainer.setup_data()
         model = trainer.init_model()
-        trainer.train_and_evaluate(model)
+        if self.config.parameters.data.k_folds == 1:
+            trainer.train_and_evaluate(model)
+        else:
+            trainer.train_and_evaluate_kflod(model)
         trainer.load_and_test()
 
 

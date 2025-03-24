@@ -151,6 +151,8 @@ class InputDataViewer:
         plotter.camera_position = camera_position
 
         plotter.show()
+        plt.savefig(f"../outputs/plots/point_cloud_{num_points}.png")
+
 
     def visualize_augmentations(self, file_path, num_points=100000):
         """

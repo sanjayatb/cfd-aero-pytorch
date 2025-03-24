@@ -41,13 +41,13 @@ fi
 RUNNING_COUNT=0
 
 # Skip the header and iterate through each row
-tail -n +2 "$CSV_FILE" | while IFS=, read -r dataset_name model_arch model_name train_size batch_size epochs num_points lr dropout conv_layers fc_layers
+tail -n +2 "$CSV_FILE" | while IFS=, read -r dataset_name model_arch model_name sample_size batch_size epochs num_points lr dropout conv_layers fc_layers
 do
     # Increment running experiment counter
     ((RUNNING_COUNT++))
 
     # Generate an experiment name dynamically
-    EXP_NAME="$(date +%Y%m%d)_${BATCH_NAME}_${dataset_name}_${model_arch}_${model_name}_ts${train_size}_bs${batch_size}_epochs${epochs}_pts${num_points}_lr${lr}_drop${dropout}_${conv_layers}_${fc_layers}"
+    EXP_NAME="$(date +%Y%m%d)_${BATCH_NAME}_${dataset_name}_${model_arch}_${model_name}_ds${sample_size}_bs${batch_size}_epochs${epochs}_pts${num_points}_lr${lr}_drop${dropout}_${conv_layers}_${fc_layers}"
 
     # Set unique log files per run
     OUTPUT_LOG="${LOG_DIR}/${EXP_NAME}.out"
@@ -76,7 +76,7 @@ python3 -u ../source/runner.py \
     --dataset-name "$dataset_name" \
     --model-arch "$model_arch" \
     --model-name "$model_name" \
-    --train-size "$train_size" \
+    --sample-size "$sample_size" \
     --batch-size "$batch_size" \
     --epochs "$epochs" \
     --num-points "$num_points" \

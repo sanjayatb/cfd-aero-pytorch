@@ -1,5 +1,7 @@
 import os
 import logging
+from pathlib import Path
+
 import torch
 import numpy as np
 import pandas as pd
@@ -8,10 +10,12 @@ from torch.utils.data import Dataset, random_split
 import pyvista as pv
 import seaborn as sns
 from typing import Callable, Optional, Tuple, List
+
 from torch_geometric.data import Data
 
 from source.config.dto import Config
 from source.data.augmentation import DataAugmentation
+from source.data.enums import CFDDataset
 
 
 class AhmedMLDataset(Dataset):
@@ -20,13 +24,13 @@ class AhmedMLDataset(Dataset):
     """
 
     def __init__(
-        self,
-        config: Config,
-        root_dir: str,
-        csv_file: str,
-        num_points: int,
-        transform: Optional[Callable] = None,
-        pointcloud_exist: bool = False,
+            self,
+            config: Config,
+            root_dir: str,
+            csv_file: str,
+            num_points: int,
+            transform: Optional[Callable] = None,
+            pointcloud_exist: bool = False,
     ):
         """
         Initializes the AhmedMLDataset instance.
@@ -42,6 +46,8 @@ class AhmedMLDataset(Dataset):
         self.config = config
         try:
             self.data_frame = pd.read_csv(csv_file)
+            id_column = self.config.datasets[CFDDataset.AHMED_ML.value].id_col
+            self.data_frame[id_column] = "ahmed_" + self.data_frame[id_column].astype("str")
         except Exception as e:
             logging.error(f"Failed to load CSV file: {csv_file}. Error: {e}")
             raise
@@ -55,6 +61,14 @@ class AhmedMLDataset(Dataset):
     def __len__(self) -> int:
         """Returns the total number of samples in the dataset."""
         return len(self.data_frame)
+
+    def get_all_file_names(self):
+        folder_path = Path(self.root_dir)
+        file_names = [file.stem for file in folder_path.iterdir() if file.is_file()]
+        if len(file_names) > self.config.parameters.data.max_total_samples:
+            return file_names[0:self.config.parameters.data.max_total_samples]
+        else:
+            return file_names
 
     def min_max_normalize(self, data: torch.Tensor) -> torch.Tensor:
         """
@@ -85,7 +99,7 @@ class AhmedMLDataset(Dataset):
         return normalized_data
 
     def _sample_or_pad_vertices(
-        self, vertices: torch.Tensor, num_points: int
+            self, vertices: torch.Tensor, num_points: int
     ) -> torch.Tensor:
         """
         Subsamples or pads the vertices of the model to a fixed number of points.
@@ -119,7 +133,7 @@ class AhmedMLDataset(Dataset):
             return None
 
     def __getitem__(
-        self, idx: int, apply_augmentations: bool = True
+            self, idx: int, apply_augmentations: bool = True
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Retrieves a sample and its corresponding label from the dataset, with an option to apply augmentations.
@@ -139,7 +153,7 @@ class AhmedMLDataset(Dataset):
         while True:
             row = self.data_frame.iloc[idx]
             dataset_conf = self.config.datasets.get(self.config.parameters.data.dataset)
-            design_id = int(row[dataset_conf.id_col])
+            design_id = row[dataset_conf.id_col]
             cd_value = row[dataset_conf.target_col]
 
             if self.pointcloud_exist:
@@ -150,7 +164,7 @@ class AhmedMLDataset(Dataset):
                     idx = (idx + 1) % len(self.data_frame)
                     continue
             else:
-                geometry_path = os.path.join(self.root_dir, f"ahmed_{design_id}.stl")
+                geometry_path = os.path.join(self.root_dir, f"{design_id}.stl")
                 try:
                     mesh = trimesh.load(geometry_path, force="mesh")
                     vertices = torch.tensor(mesh.vertices, dtype=torch.float32)
@@ -175,10 +189,10 @@ class AhmedMLDataset(Dataset):
             return point_cloud_normalized, cd_value
 
     def split_data(
-        self,
-        train_ratio: float = 0.7,
-        val_ratio: float = 0.15,
-        test_ratio: float = 0.15,
+            self,
+            train_ratio: float = 0.7,
+            val_ratio: float = 0.15,
+            test_ratio: float = 0.15,
     ) -> Tuple[List[int], List[int], List[int]]:
         """
         Splits the dataset into training, validation, and test sets.
@@ -214,8 +228,8 @@ class AhmedMLDataset(Dataset):
         """
         row = self.data_frame.iloc[idx]
         dataset_conf = self.config.datasets.get(self.config.parameters.data.dataset)
-        design_id = int(row[dataset_conf.id_col])
-        geometry_path = os.path.join(self.root_dir, f"ahmed_{design_id}.stl")
+        design_id = row[dataset_conf.id_col]
+        geometry_path = os.path.join(self.root_dir, f"{design_id}.stl")
 
         try:
             mesh = trimesh.load(geometry_path, force="mesh")
@@ -248,8 +262,8 @@ class AhmedMLDataset(Dataset):
         """
         row = self.data_frame.iloc[idx]
         dataset_conf = self.config.datasets.get(self.config.parameters.data.dataset)
-        design_id = int(row[dataset_conf.id_col])
-        geometry_path = os.path.join(self.root_dir, f"ahmed_{design_id}.stl")
+        design_id = row[dataset_conf.id_col]
+        geometry_path = os.path.join(self.root_dir, f"{design_id}.stl")
 
         try:
             mesh = trimesh.load(geometry_path, force="mesh")
@@ -381,7 +395,7 @@ class AhmedMLGNNDataset(Dataset):
     """
 
     def __init__(
-        self, config: Config, root_dir: str, csv_file: str, normalize: bool = True
+            self, config: Config, root_dir: str, csv_file: str, normalize: bool = True
     ):
         """
         Initialize the dataset.
@@ -439,8 +453,8 @@ class AhmedMLGNNDataset(Dataset):
 
         row = self.data_frame.iloc[idx]
         dataset_conf = self.config.datasets.get(self.config.parameters.data.dataset)
-        design_id = int(row[dataset_conf.id_col])
-        stl_path = os.path.join(self.root_dir, f"ahmed_{design_id}.stl")
+        design_id = row[dataset_conf.id_col]
+        stl_path = os.path.join(self.root_dir, f"{design_id}.stl")
         cd_value = row[dataset_conf.target_col]
 
         # Load the mesh from STL
@@ -476,8 +490,8 @@ class AhmedMLGNNDataset(Dataset):
         """
         row = self.data_frame.iloc[idx]
         dataset_conf = self.config.datasets.get(self.config.parameters.data.dataset)
-        design_id = int(row[dataset_conf.id_col])
-        geometry_path = os.path.join(self.root_dir, f"ahmed_{design_id}.stl")
+        design_id = row[dataset_conf.id_col]
+        geometry_path = os.path.join(self.root_dir, f"{design_id}.stl")
 
         try:
             mesh = trimesh.load(geometry_path, force="mesh")

@@ -80,6 +80,8 @@ def override_configs(config: Config, args):
             f"_np{config.parameters.data.num_points}"
             f"_lr{config.parameters.model.lr}"
             f"_dropout{config.parameters.model.dropout}"
+            f"_cl{config.parameters.model.conv_layers}"
+            f"_fc{config.parameters.model.fc_layers}"
         )
 
     print(f"🚀 Running Experiment: {config.exp_name}")

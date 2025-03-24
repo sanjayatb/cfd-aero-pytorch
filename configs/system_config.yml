@@ -37,9 +37,15 @@ environment:
 parameters:
   data:
     dataset: DrivAerML
-    training_size: 350
-    validation_size: 75
-    test_size: 75
+    data_id_load_random: true  # load ids based on the dataset randomly
+    max_total_samples: 4000 # use when data_id_load_random: true
+    train_ratio: 0.7 # use when data_id_load_random: true
+    val_ratio: 0.15 # use when data_id_load_random: true and k_folds=0
+    test_ratio: 0.15 # use when data_id_load_random: true
+    k_folds: 1 # use when data_id_load_random: true
+    training_size: 350  # use when data_id_load_random: false
+    validation_size: 75  # use when data_id_load_random: false
+    test_size: 75 # use when data_id_load_random: false
     num_points: 100000
   model:
     lr: 0.001
@@ -50,17 +56,18 @@ parameters:
     k: 40
     optimizer: adam
     conv_layers:
-      - 6
+      - 3
       - 64
       - 128
       - 256
       - 512
       - 1024
+      - 2048
     fc_layers:
-      - 128
-      - 64
-      - 32
-      - 16
+      - 2048
+      - 1024
+      - 256
+      - 1
     output_channels: 1
 
 outputs:

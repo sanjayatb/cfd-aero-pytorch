@@ -24,6 +24,12 @@ class EnvironmentConfig:
 @dataclass
 class DataParams:
     dataset: str
+    data_id_load_random: bool
+    max_total_samples: int
+    train_ratio: float
+    val_ratio: float
+    test_ratio: float
+    k_folds: int
     training_size: int
     validation_size: int
     test_size: int

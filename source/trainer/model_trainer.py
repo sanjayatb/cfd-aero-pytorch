@@ -28,6 +28,13 @@ class ModelTrainer:
     @abstractmethod
     def setup_data(self):
         self.data_loaders.init_loaders()
+        train_len = len(self.data_loaders.train_dataloaders[0].dataset)
+        val_len = len(self.data_loaders.val_dataloaders[0].dataset)
+        test_len = len(self.data_loaders.test_dataloader.dataset)
+        print(f"Train size: {train_len}, "
+              f"Validation size: {val_len}, "
+              f"Test size: {test_len}, "
+              f"Total Dataset size: {train_len + val_len + test_len}.")
 
     @abstractmethod
     def init_model(self) -> torch.nn.Module:
@@ -35,6 +42,10 @@ class ModelTrainer:
 
     @abstractmethod
     def train_and_evaluate(self, model: torch.nn.Module):
+        pass
+
+    @abstractmethod
+    def train_and_evaluate_kflod(self, model: torch.nn.Module):
         pass
 
     @abstractmethod
