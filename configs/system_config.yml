@@ -1,5 +1,5 @@
-model_arch: POINTNET  # can be override by hyper_parameters.csv file
-model_name: RegPointNet # can be override by hyper_parameters.csv file
+model_arch: PointNet  # can be override by hyper_parameters.csv file
+model_name: SimplePointNet # can be override by hyper_parameters.csv file
 experiment_batch_name: training_constant
 base_path: /work/home/ac3jvu5s13/Chalmers/code/cfd-aero-pytorch
 
@@ -25,7 +25,15 @@ datasets:
     target_col: "Average Cd"
     target_col_alias: "Drag"  # use to keep same name in target
     subset_dir: inputs/drivaer_ml/subset
-
+  DrivAerNet:
+    stl_path: inputs/drivaer_net/stl
+    target_data_path: inputs/drivaer_net/targets.csv
+    id_col: "Design"
+    target_col: "Average Cd"
+    #target_col: "p"
+    target_col_alias: "Drag"  # use to keep same name in target
+    #target_col_alias: "Pressure"  # use to keep same name in target
+    subset_dir: inputs/drivaer_net/subset
 
 environment:
   cuda: true
@@ -36,12 +44,12 @@ environment:
 # below parameters can be override by hyper_parameters.csv file
 parameters:
   data:
-    dataset: DrivAerML
+    dataset: DrivAerNet
     data_id_load_random: true  # load ids based on the dataset randomly
-    max_total_samples: 4000 # use when data_id_load_random: true
-    train_ratio: 0.7 # use when data_id_load_random: true
-    val_ratio: 0.15 # use when data_id_load_random: true and k_folds=0
-    test_ratio: 0.15 # use when data_id_load_random: true
+    max_total_samples: 500 # use when data_id_load_random: true
+    train_ratio: 0.8 # use when data_id_load_random: true
+    val_ratio: 0.1 # use when data_id_load_random: true and k_folds=0
+    test_ratio: 0.1 # use when data_id_load_random: true
     k_folds: 1 # use when data_id_load_random: true
     training_size: 350  # use when data_id_load_random: false
     validation_size: 75  # use when data_id_load_random: false
@@ -77,4 +85,8 @@ outputs:
     best_model_path: outputs/models
     best_scores_path: outputs/scores
 
-
+predictor:
+  enable: false
+  best_model_path: outputs/models/20250504_pressure_l2_sr_DrivAerNet_PointNet_SimplePointNet_ds500_bs16_epochs300_pts100000_lr0.001_drop0.3_[3:64:128:256:512:1024:2048]_[2048:1024:256:1]_best_model.pth
+  test_file_path: outputs/subset_dynamic/pressure_l2_sr/test_design_ids_4000.txt
+  test_output_path: outputs/predictions/pressure_test_design_ids_500_predictions.txt
