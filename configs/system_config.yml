@@ -1,7 +1,7 @@
 model_arch: PointNet  # can be override by hyper_parameters.csv file
 model_name: SimplePointNet # can be override by hyper_parameters.csv file
 experiment_batch_name: training_constant
-base_path: /work/home/ac3jvu5s13/Chalmers/code/cfd-aero-pytorch
+base_path: /work/home/<user>/Chalmers/code/cfd-aero-pytorch
 
 datasets:
   AhmedML:
