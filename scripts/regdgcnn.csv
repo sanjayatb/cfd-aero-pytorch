@@ -1,0 +1,2 @@
+dataset_name,model_arch,model_name,sample_size,batch_size,epochs,num_points,lr,dropout
+DrivAerNet,GNN,RegDGCNN,500,16,300,100000,0.001,0.3,NA,NA

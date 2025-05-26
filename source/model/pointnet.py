@@ -1,7 +1,7 @@
 from source.config.dto import Config
 from source.model.base import Model
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
-from neuralop.models import FNO1d
+#from neuralop.models import FNO1d
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -30,29 +30,46 @@ class SimplePointNet(Model):
         self.fc_layers = nn.ModuleList()
         self.fc_bn_layers = nn.ModuleList()
 
+        dataset_conf = self.config.datasets.get(self.config.parameters.data.dataset)
+
         for i in range(len(fc_layers) - 1):
             self.fc_layers.append(nn.Linear(fc_layers[i], fc_layers[i + 1]))
             if i < len(fc_layers) - 2:  # No BatchNorm on final layer
-                self.fc_bn_layers.append(nn.BatchNorm1d(fc_layers[i + 1]))
+                if dataset_conf.target_col_alias == "Pressure":
+                    self.fc_bn_layers.append(nn.LayerNorm(fc_layers[i + 1]))
+                else:
+                    self.fc_bn_layers.append(nn.BatchNorm1d(fc_layers[i + 1]))
 
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
-        # **Apply dynamically created Conv1D layers**
+        dataset_conf = self.config.datasets.get(self.config.parameters.data.dataset)
+
+        # (B, 3, N) → Conv layers
         for conv, bn in zip(self.conv_layers, self.bn_layers):
-            x = F.leaky_relu(bn(conv(x)))  # (B, Channels, N)
+            x = F.leaky_relu(bn(conv(x)))  # x: (B, C, N)
 
-        # **Global Feature Pooling**
-        x = F.adaptive_max_pool1d(x, 1).squeeze(-1)  # (B, emb_dims)
+        if dataset_conf.target_col_alias == "Pressure":
+            # → pointwise MLP
+            x = x.transpose(1, 2)  # (B, N, C)
 
-        # **Apply dynamically created Fully Connected layers**
-        for i, fc in enumerate(self.fc_layers):
-            x = fc(x)
-            if i < len(self.fc_layers) - 1:  # No activation on final layer
-                x = F.leaky_relu(self.fc_bn_layers[i](x))
-                x = self.dropout(x)
+            for i, fc in enumerate(self.fc_layers):
+                x = fc(x)  # (B, N, C')
+                if i < len(self.fc_layers) - 1:
+                    x = F.leaky_relu(self.fc_bn_layers[i](x))
+                    x = self.dropout(x)
 
-        return x  # (B, 1)
+            return x  # (B, N, 1)
+
+        else:
+            # → global pooling + FC
+            x = F.adaptive_max_pool1d(x, 1).squeeze(-1)  # (B, C)
+            for i, fc in enumerate(self.fc_layers):
+                x = fc(x)
+                if i < len(self.fc_layers) - 1:
+                    x = F.leaky_relu(self.fc_bn_layers[i](x))
+                    x = self.dropout(x)
+            return x  # (B, 1)
 
 
 class ShallowMLP(Model):
@@ -133,101 +150,90 @@ class PointNetFNO(Model):
 
 class RegPointNet(Model):
     """
-    PointNet-based regression model for 3D point cloud data.
-
-    Args:
-        args (dict): Configuration parameters including 'emb_dims' for embedding dimensions and 'dropout' rate.
-
-    Methods:
-        forward(x): Forward pass through the network.
+    PointNet-based multi-task model: predicts point-wise pressure and global drag.
     """
 
     def __init__(self, config: Config):
-        """
-        Initialize the RegPointNet model for regression tasks with enhanced complexity,
-        including additional layers and residual connections.
-
-        Parameters:
-            emb_dims (int): Dimensionality of the embedding space.
-            dropout (float): Dropout probability.
-        """
         super(RegPointNet, self).__init__(config)
 
-        # Convolutional layers
-        self.conv1 = nn.Conv1d(3, 512, kernel_size=1, bias=False)
-        self.conv2 = nn.Conv1d(512, 1024, kernel_size=1, bias=False)
-        self.conv3 = nn.Conv1d(1024, 1024, kernel_size=1, bias=False)
-        self.conv4 = nn.Conv1d(1024, 1024, kernel_size=1, bias=False)
-        self.conv5 = nn.Conv1d(1024, 1024, kernel_size=1, bias=False)
-        self.conv6 = nn.Conv1d(
-            1024, config.parameters.model.emb_dims, kernel_size=1, bias=False
-        )
+        emb_dims = config.parameters.model.emb_dims
+        dropout = config.parameters.model.dropout
 
-        # Batch normalization layers
+        # Shared feature extractor (backbone)
+        self.conv1 = nn.Conv1d(3, 512, 1, bias=False)
+        self.conv2 = nn.Conv1d(512, 1024, 1, bias=False)
+        self.conv3 = nn.Conv1d(1024, 1024, 1, bias=False)
+        self.conv4 = nn.Conv1d(1024, 1024, 1, bias=False)
+        self.conv5 = nn.Conv1d(1024, 1024, 1, bias=False)
+        self.conv6 = nn.Conv1d(1024, emb_dims, 1, bias=False)
+
         self.bn1 = nn.BatchNorm1d(512)
         self.bn2 = nn.BatchNorm1d(1024)
         self.bn3 = nn.BatchNorm1d(1024)
         self.bn4 = nn.BatchNorm1d(1024)
         self.bn5 = nn.BatchNorm1d(1024)
-        self.bn6 = nn.BatchNorm1d(config.parameters.model.emb_dims)
+        self.bn6 = nn.BatchNorm1d(emb_dims)
 
-        # Dropout layers
-        self.dropout_conv = nn.Dropout(p=config.parameters.model.dropout)
-        self.dropout_linear = nn.Dropout(p=config.parameters.model.dropout)
+        # Shortcut (residual)
+        self.conv_shortcut = nn.Conv1d(3, emb_dims, 1, bias=False)
+        self.bn_shortcut = nn.BatchNorm1d(emb_dims)
 
-        # Residual connection layer
-        self.conv_shortcut = nn.Conv1d(
-            3, config.parameters.model.emb_dims, kernel_size=1, bias=False
+        self.dropout = nn.Dropout(p=dropout)
+
+        # --------- Point-wise Pressure Head ---------
+        self.pressure_head = nn.Sequential(
+            nn.Conv1d(emb_dims, 512, 1, bias=False),
+            nn.BatchNorm1d(512),
+            nn.ReLU(),
+            nn.Dropout(p=dropout),
+            nn.Conv1d(512, 256, 1, bias=False),
+            nn.BatchNorm1d(256),
+            nn.ReLU(),
+            nn.Conv1d(256, 1, 1)  # (B, 1, N)
         )
-        self.bn_shortcut = nn.BatchNorm1d(config.parameters.model.emb_dims)
 
-        # Linear layers for regression output
-        self.linear1 = nn.Linear(config.parameters.model.emb_dims, 512, bias=False)
-        self.bn7 = nn.BatchNorm1d(512)
-        self.linear2 = nn.Linear(512, 256, bias=False)
-        self.bn8 = nn.BatchNorm1d(256)
-        self.linear3 = nn.Linear(256, 128)  # Output one scalar value
-        self.bn9 = nn.BatchNorm1d(128)
-        self.linear4 = nn.Linear(128, 64)  # Output one scalar value
-        self.bn10 = nn.BatchNorm1d(64)
-        self.final_linear = nn.Linear(64, 1)
+        # --------- Global Drag Head (after pooling) ---------
+        self.drag_head = nn.Sequential(
+            nn.Linear(emb_dims, 512, bias=False),
+            nn.BatchNorm1d(512),
+            nn.ReLU(),
+            nn.Linear(512, 256, bias=False),
+            nn.BatchNorm1d(256),
+            nn.ReLU(),
+            nn.Linear(256, 1)  # (B, 1)
+        )
 
     def forward(self, x):
         """
-        Forward pass of the network.
-
-        Parameters:
-            x (Tensor): Input tensor of shape (batch_size, 3, num_points).
-
+        Args:
+            x: Tensor of shape (B, 3, N)
         Returns:
-            Tensor: Output tensor of the predicted scalar value.
+            pressure: (B, N)
+            drag: (B, 1)
         """
         shortcut = self.bn_shortcut(self.conv_shortcut(x))
 
         x = F.relu(self.bn1(self.conv1(x)))
-        x = self.dropout_conv(x)
         x = F.relu(self.bn2(self.conv2(x)))
-        x = self.dropout_conv(x)
         x = F.relu(self.bn3(self.conv3(x)))
-        x = self.dropout_conv(x)
         x = F.relu(self.bn4(self.conv4(x)))
-        x = self.dropout_conv(x)
         x = F.relu(self.bn5(self.conv5(x)))
-        x = self.dropout_conv(x)
         x = F.relu(self.bn6(self.conv6(x)))
-        # Adding the residual connection
-        x = x + shortcut
+        x = x + shortcut  # Residual connection
 
-        x = F.adaptive_max_pool1d(x, 1).squeeze(-1)
-        x = F.relu(self.bn7(self.linear1(x)))
-        x = F.relu(self.bn8(self.linear2(x)))
-        x = F.relu(self.bn9(self.linear3(x)))
-        x = F.relu(self.bn10(self.linear4(x)))
-        features = x
-        x = self.final_linear(x)
+        # Point-wise prediction (no pooling)
+        pressure = self.pressure_head(x).squeeze(1)  # (B, N)
 
-        # return x, features
-        return x
+        # Global prediction via pooled features
+        pooled = F.adaptive_max_pool1d(x, 1).squeeze(-1)  # (B, emb_dims)
+        drag = self.drag_head(pooled)  # (B, 1)
+
+        dataset_conf = self.config.datasets.get(self.config.parameters.data.dataset)
+        if dataset_conf.target_col_alias == "Pressure":
+            return pressure
+
+        return drag
+
 
 
 class SelfAttention(nn.Module):

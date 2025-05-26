@@ -1,7 +1,5 @@
 import os
 import logging
-from pathlib import Path
-
 import torch
 import numpy as np
 import pandas as pd
@@ -10,17 +8,18 @@ from torch.utils.data import Dataset, random_split
 import pyvista as pv
 import seaborn as sns
 from typing import Callable, Optional, Tuple, List
-
 from torch_geometric.data import Data
 
 from source.config.dto import Config
 from source.data.augmentation import DataAugmentation
-from source.data.enums import CFDDataset
+from pathlib import Path
+
+from source.data.util import read_vtk, convert_to_triangular_mesh, fetch_mesh_vertices
 
 
-class AhmedMLDataset(Dataset):
+class DrivAerNetDataset(Dataset):
     """
-    PyTorch Dataset class for the AhmedML dataset, handling loading, transforming, and augmenting 3D car models.
+    PyTorch Dataset class for the DrivAerNet dataset, handling loading, transforming, and augmenting 3D car models.
     """
 
     def __init__(
@@ -33,7 +32,7 @@ class AhmedMLDataset(Dataset):
             pointcloud_exist: bool = False,
     ):
         """
-        Initializes the AhmedMLDataset instance.
+        Initializes the DrivAerNetDataset instance.
 
         Args:
             root_dir: Directory containing the STL files for 3D car models.
@@ -46,8 +45,6 @@ class AhmedMLDataset(Dataset):
         self.config = config
         try:
             self.data_frame = pd.read_csv(csv_file)
-            id_column = self.config.datasets[CFDDataset.AHMED_ML.value].id_col
-            self.data_frame[id_column] = "ahmed_" + self.data_frame[id_column].astype("str")
         except Exception as e:
             logging.error(f"Failed to load CSV file: {csv_file}. Error: {e}")
             raise
@@ -71,14 +68,17 @@ class AhmedMLDataset(Dataset):
         else:
             return file_names
 
-    def min_max_normalize(self, data: torch.Tensor) -> torch.Tensor:
+    def pressure_coefficient(self, data: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        return data / 30**2, torch.Tensor(1), torch.Tensor(1)
+
+    def min_max_normalize(self, data: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Normalizes the data to the range [0, 1] based on min and max values.
         """
         min_vals, _ = data.min(dim=0, keepdim=True)
         max_vals, _ = data.max(dim=0, keepdim=True)
         normalized_data = (data - min_vals) / (max_vals - min_vals)
-        return normalized_data
+        return normalized_data, min_vals, max_vals
 
     def z_score_normalize(self, data: torch.Tensor) -> torch.Tensor:
         """
@@ -122,7 +122,7 @@ class AhmedMLDataset(Dataset):
         return vertices
 
     def _load_point_cloud(self, design_id: str) -> Optional[torch.Tensor]:
-        load_path = os.path.join(self.root_dir, f"ahmed_{design_id}{design_id}.pt")
+        load_path = os.path.join(self.root_dir, f"{design_id}.pt")
         if os.path.exists(load_path) and os.path.getsize(load_path) > 0:
             try:
                 return torch.load(load_path)
@@ -133,9 +133,61 @@ class AhmedMLDataset(Dataset):
             # logging.error(f"Point cloud file {load_path} does not exist or is empty.")
             return None
 
+    def _extract_from_vtk(self, idx):
+        row = self.data_frame.iloc[idx]
+        dataset_conf = self.config.datasets.get(self.config.parameters.data.dataset)
+        design_id = row[dataset_conf.id_col].replace("DrivAer_","")
+
+        vtk_path = os.path.join(self.root_dir.replace("/stl","/vtk"), f"{design_id}.vtk")
+        surface_mesh = read_vtk(vtk_path)
+        surface_mesh = convert_to_triangular_mesh(surface_mesh)
+        surface_vertices = fetch_mesh_vertices(surface_mesh)
+
+        vertices = np.asarray(surface_vertices)
+        if vertices.shape[0] >= self.num_points:
+            indices = np.random.choice(vertices.shape[0], size=self.num_points, replace=False)
+            sampled = vertices[indices]
+        else:
+            pad = np.zeros((self.num_points - vertices.shape[0], 3))
+            indices = [vertices, pad]
+            sampled = np.vstack([vertices, pad])
+
+        vertices = torch.tensor(sampled, dtype=torch.float32)
+
+        surface_mesh = surface_mesh.cell_data_to_point_data()
+        node_attributes = surface_mesh.point_data
+        pressure_ref = np.asarray(node_attributes[dataset_conf.target_col])
+        return idx, vertices, pressure_ref[indices]
+
+
+    def _extract_from_stl(self, idx):
+        row = self.data_frame.iloc[idx]
+        dataset_conf = self.config.datasets.get(self.config.parameters.data.dataset)
+        design_id = row[dataset_conf.id_col]
+        target_value = row[dataset_conf.target_col]
+
+        if self.pointcloud_exist:
+            vertices = self._load_point_cloud(design_id)
+            if vertices is None:
+                # logging.warning(f"Skipping design {design_id} because point cloud is not found or corrupted.")
+                idx = (idx + 1) % len(self.data_frame)
+                return idx, None
+        else:
+            geometry_path = os.path.join(self.root_dir, f"{design_id}.stl")
+            try:
+                mesh = trimesh.load(geometry_path, force="mesh")
+                vertices = torch.tensor(mesh.vertices, dtype=torch.float32)
+                vertices = self._sample_or_pad_vertices(vertices, self.num_points)
+            except Exception as e:
+                logging.error(
+                    f"Failed to load STL file: {geometry_path}. Error: {e}"
+                )
+                raise
+        return idx, vertices, target_value
+
     def __getitem__(
             self, idx: int, apply_augmentations: bool = True
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor, Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor]]:
         """
         Retrieves a sample and its corresponding label from the dataset, with an option to apply augmentations.
 
@@ -152,29 +204,19 @@ class AhmedMLDataset(Dataset):
         if idx in self.cache:
             return self.cache[idx]
         while True:
-            row = self.data_frame.iloc[idx]
             dataset_conf = self.config.datasets.get(self.config.parameters.data.dataset)
-            design_id = row[dataset_conf.id_col]
-            cd_value = row[dataset_conf.target_col]
 
-            if self.pointcloud_exist:
-                vertices = self._load_point_cloud(design_id)
-
-                if vertices is None:
-                    # logging.warning(f"Skipping design {design_id} because point cloud is not found or corrupted.")
-                    idx = (idx + 1) % len(self.data_frame)
-                    continue
+            if dataset_conf.target_col_alias == "Drag":
+                idx, vertices, target_value = self._extract_from_stl(idx)
+                target_value = torch.tensor(float(target_value), dtype=torch.float32).view(-1)
+                min_target, max_target = min(target_value), max(target_value)
+            elif dataset_conf.target_col_alias == "Pressure":
+                idx, vertices, target_value = self._extract_from_vtk(idx)
+                target_value = torch.tensor(target_value, dtype=torch.float32).view(-1, 1)
+                #target_value, min_target, max_target = self.min_max_normalize(target_value)
+                target_value, min_target, max_target = self.pressure_coefficient(target_value)
             else:
-                geometry_path = os.path.join(self.root_dir, f"{design_id}.stl")
-                try:
-                    mesh = trimesh.load(geometry_path, force="mesh")
-                    vertices = torch.tensor(mesh.vertices, dtype=torch.float32)
-                    vertices = self._sample_or_pad_vertices(vertices, self.num_points)
-                except Exception as e:
-                    logging.error(
-                        f"Failed to load STL file: {geometry_path}. Error: {e}"
-                    )
-                    raise
+                raise NotImplemented(f"{dataset_conf.target_col_alias} not implemented")
 
             if apply_augmentations:
                 vertices = self.augmentation.translate_pointcloud(vertices.numpy())
@@ -183,11 +225,10 @@ class AhmedMLDataset(Dataset):
             if self.transform:
                 vertices = self.transform(vertices)
 
-            point_cloud_normalized = self.min_max_normalize(vertices)
-            cd_value = torch.tensor(float(cd_value), dtype=torch.float32).view(-1)
+            point_cloud_normalized, min_val, max_val = self.min_max_normalize(vertices)
 
-            self.cache[idx] = (point_cloud_normalized, cd_value)
-            return point_cloud_normalized, cd_value
+            self.cache[idx] = (point_cloud_normalized, target_value)
+            return point_cloud_normalized, target_value, (min_val, max_val), (min_target, max_target)
 
     def split_data(
             self,
@@ -262,6 +303,7 @@ class AhmedMLDataset(Dataset):
         It uses seaborn to obtain visually distinct colors for the mesh and nodes.
         """
         row = self.data_frame.iloc[idx]
+
         dataset_conf = self.config.datasets.get(self.config.parameters.data.dataset)
         design_id = row[dataset_conf.id_col]
         geometry_path = os.path.join(self.root_dir, f"{design_id}.stl")
@@ -390,9 +432,9 @@ class AhmedMLDataset(Dataset):
         plotter.show()
 
 
-class AhmedMLGNNDataset(Dataset):
+class DrivAerNetGNNDataset(Dataset):
     """
-    PyTorch Dataset for loading and processing the AhmedML dataset into graph format suitable for GNNs.
+    PyTorch Dataset for loading and processing the DrivAerNet dataset into graph format suitable for GNNs.
     """
 
     def __init__(
@@ -406,8 +448,8 @@ class AhmedMLGNNDataset(Dataset):
             csv_file (str): Path to the CSV file containing metadata such as aerodynamic coefficients.
             normalize (bool): Whether to normalize the node features.
         """
-        self.root_dir = root_dir
         self.config = config
+        self.root_dir = root_dir
         self.data_frame = pd.read_csv(csv_file)
         self.normalize = normalize
         self.cache = {}
@@ -420,6 +462,15 @@ class AhmedMLGNNDataset(Dataset):
             int: Number of samples in the dataset.
         """
         return len(self.data_frame)
+
+    def get_all_file_names(self):
+        folder_path = Path(self.root_dir)
+        file_names = [file.stem for file in folder_path.iterdir() if file.is_file()]
+        file_names = sorted(file_names)
+        if len(file_names) > self.config.parameters.data.max_total_samples:
+            return file_names[0:self.config.parameters.data.max_total_samples]
+        else:
+            return file_names
 
     def min_max_normalize(self, data: torch.Tensor) -> torch.Tensor:
         """
@@ -455,8 +506,8 @@ class AhmedMLGNNDataset(Dataset):
         row = self.data_frame.iloc[idx]
         dataset_conf = self.config.datasets.get(self.config.parameters.data.dataset)
         design_id = row[dataset_conf.id_col]
-        stl_path = os.path.join(self.root_dir, f"{design_id}.stl")
         cd_value = row[dataset_conf.target_col]
+        stl_path = os.path.join(self.root_dir, f"{design_id}.stl")
 
         # Load the mesh from STL
         try:

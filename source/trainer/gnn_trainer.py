@@ -7,7 +7,7 @@ from torch import optim
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import tqdm
 from typing_extensions import override
-
+import trimesh
 import torch.nn.functional as F
 
 from source.trainer.model_trainer import ModelTrainer
@@ -157,7 +157,7 @@ class GNNTrainer(ModelTrainer):
         # print(f"Model saved to {model_path}")
 
     @override
-    def test(self, model: torch.nn.Module):
+    def test(self, model: torch.nn.Module, predictor=False):
         model.eval()  # Set the model to evaluation mode
         total_mse, total_mae = 0, 0
         max_mae = 0
@@ -225,7 +225,7 @@ class GNNTrainer(ModelTrainer):
         self.result_collector.save_test_scores(scores)
 
     @override
-    def load_and_test(self):
+    def load_model(self, file_path=None):
         """Load a saved model and test it."""
         this_model = self.model(config=self.config).to(self.device)
         if self.config.environment.cuda and torch.cuda.device_count() > 1:
@@ -233,11 +233,70 @@ class GNNTrainer(ModelTrainer):
                 this_model, device_ids=self.config.environment.device_id
             )
 
-        best_model_path = os.path.join(
-            self.config.outputs.model.best_model_path,
-            f"{self.config.exp_name}_best_model.pth",
-        )
-        print(f"Load best model: {best_model_path}")
-        this_model.load_state_dict(torch.load(best_model_path))
+        if file_path is None:
+            best_model_path = os.path.join(
+                self.config.outputs.model.best_model_path,
+                f"{self.config.exp_name}_best_model.pth",
+            )
+        else:
+            best_model_path = f"{self.config.base_path}/{file_path}"
 
-        self.test(this_model)
+        print(f"Load best model: {best_model_path}")
+        this_model.load_state_dict(torch.load(best_model_path, map_location=self.device))
+        return this_model
+
+    def load_and_preprocess_stl(
+            self,
+            file_path: str,
+            num_points: int = 100000,
+            device: str = "cpu"
+    ) -> torch.Tensor:
+        """
+        Load an STL file and convert it into a normalized point cloud tensor for PointNet.
+
+        Args:
+            file_path (str): Path to the STL file.
+            num_points (int): Number of points to sample from the surface.
+            device (str): 'cpu' or 'cuda' — where to load the tensor.
+
+        Returns:
+            torch.Tensor: Tensor of shape (1, 3, N), ready for PointNet.
+        """
+        mesh = trimesh.load_mesh(file_path)
+
+        if not isinstance(mesh, trimesh.Trimesh):
+            raise ValueError(f"Invalid STL file or unsupported mesh type: {file_path}")
+
+        # Sample points uniformly on the surface of the mesh
+        points, _ = trimesh.sample.sample_surface(mesh, num_points)
+
+        # Normalize the point cloud to zero-mean and unit sphere
+        points = points - points.mean(axis=0)  # center
+        scale = np.max(np.linalg.norm(points, axis=1))
+        points = points / scale  # scale to unit ball
+
+        # Convert to torch tensor: shape (1, 3, num_points)
+        point_tensor = torch.tensor(points, dtype=torch.float32).T.unsqueeze(0).to(device)
+
+        return point_tensor
+
+    def predict_one(self, model: torch.nn.Module, file_path: str):
+        """
+        Predict for a single sample or file input (already preprocessed to tensor).
+        """
+        data_tensor = self.load_and_preprocess_stl(file_path)  # → should return torch.Tensor
+        model.eval()
+
+        with torch.no_grad():
+            data = data_tensor.to(self.device)
+
+            start_time = time.time()
+            output = model(data)
+            inference_time = time.time() - start_time
+
+            prediction = output.squeeze().cpu().numpy()
+
+            print(f"Prediction: {prediction}")
+            print(f"Inference time: {inference_time:.4f}s")
+
+            return prediction

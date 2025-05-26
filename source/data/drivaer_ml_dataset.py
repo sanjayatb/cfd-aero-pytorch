@@ -1,5 +1,6 @@
 import os
 import logging
+
 import torch
 import numpy as np
 import pandas as pd
@@ -14,8 +15,10 @@ from source.config.dto import Config
 from source.data.augmentation import DataAugmentation
 from pathlib import Path
 
+from source.data.util import read_stl, fetch_mesh_vertices, convert_to_triangular_mesh
 
-class DrivAerNetDataset(Dataset):
+
+class DrivAerMLDataset(Dataset):
     """
     PyTorch Dataset class for the DrivAerNet dataset, handling loading, transforming, and augmenting 3D car models.
     """
@@ -60,19 +63,20 @@ class DrivAerNetDataset(Dataset):
     def get_all_file_names(self):
         folder_path = Path(self.root_dir)
         file_names = [file.stem for file in folder_path.iterdir() if file.is_file()]
+        file_names = sorted(file_names)
         if len(file_names) > self.config.parameters.data.max_total_samples:
             return file_names[0:self.config.parameters.data.max_total_samples]
         else:
             return file_names
 
-    def min_max_normalize(self, data: torch.Tensor) -> torch.Tensor:
+    def min_max_normalize(self, data: torch.Tensor)  -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Normalizes the data to the range [0, 1] based on min and max values.
         """
         min_vals, _ = data.min(dim=0, keepdim=True)
         max_vals, _ = data.max(dim=0, keepdim=True)
         normalized_data = (data - min_vals) / (max_vals - min_vals)
-        return normalized_data
+        return normalized_data, min_vals, max_vals
 
     def z_score_normalize(self, data: torch.Tensor) -> torch.Tensor:
         """
@@ -129,7 +133,7 @@ class DrivAerNetDataset(Dataset):
 
     def __getitem__(
             self, idx: int, apply_augmentations: bool = True
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor, torch.Tensor]]:
         """
         Retrieves a sample and its corresponding label from the dataset, with an option to apply augmentations.
 
@@ -161,8 +165,9 @@ class DrivAerNetDataset(Dataset):
             else:
                 geometry_path = os.path.join(self.root_dir, f"{design_id}.stl")
                 try:
-                    mesh = trimesh.load(geometry_path, force="mesh")
-                    vertices = torch.tensor(mesh.vertices, dtype=torch.float32)
+                    surface_mesh = read_stl(geometry_path)
+                    surface_mesh = convert_to_triangular_mesh(surface_mesh)
+                    vertices = torch.tensor(surface_mesh.points, dtype=torch.float32)
                     vertices = self._sample_or_pad_vertices(vertices, self.num_points)
                 except Exception as e:
                     logging.error(
@@ -177,11 +182,11 @@ class DrivAerNetDataset(Dataset):
             if self.transform:
                 vertices = self.transform(vertices)
 
-            point_cloud_normalized = self.min_max_normalize(vertices)
+            point_cloud_normalized, min_val, max_val = self.min_max_normalize(vertices)
             target_value = torch.tensor(float(target_value), dtype=torch.float32).view(-1)
 
             self.cache[idx] = (point_cloud_normalized, target_value)
-            return point_cloud_normalized, target_value
+            return point_cloud_normalized, target_value, (min_val, max_val), (min_val, max_val)
 
     def split_data(
             self,

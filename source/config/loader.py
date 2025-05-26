@@ -10,9 +10,8 @@ from source.config.dto import (
     OutputsConfig,
     DatasetsConfig,
     Parameters,
-    ModelOutput,
+    ModelOutput, Predictor,
 )
-
 
 def load_config(file_path: str) -> Config:
     """Load YAML configuration into the Config dataclass."""
@@ -38,6 +37,7 @@ def load_config(file_path: str) -> Config:
             preprocessed_data=config_dict["outputs"]["preprocessed_data"],
             log_path=config_dict["outputs"]["log_path"],
         ),
+        predictor=Predictor(**config_dict.get("predictor", {}))
     )
 
 
@@ -52,6 +52,8 @@ def override_configs(config: Config, args):
         config.exp_name = args.exp_name
     if args.dataset_name:
         config.parameters.data.dataset = args.dataset_name
+    if args.sample_size:
+        config.parameters.data.max_total_samples = args.sample_size
     if args.train_size:
         config.parameters.data.training_size = args.train_size
     if args.batch_size:

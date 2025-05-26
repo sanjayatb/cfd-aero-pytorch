@@ -63,7 +63,7 @@ do
 #!/bin/bash
 #SBATCH -J $EXP_NAME
 #SBATCH -p dzagnormal
-#SBATCH -N 1
+#SBATCH -N 2
 #SBATCH --ntasks-per-node=16
 #SBATCH --gres=gpu:2
 #SBATCH --output=$OUTPUT_LOG

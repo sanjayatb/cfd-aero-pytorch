@@ -49,9 +49,9 @@ class ModelTrainer:
         pass
 
     @abstractmethod
-    def test(self, model: torch.nn.Module):
+    def test(self, model: torch.nn.Module, predictor=False):
         pass
 
     @abstractmethod
-    def load_and_test(self):
+    def load_model(self, file_path=None):
         pass

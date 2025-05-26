@@ -3,14 +3,14 @@ import time
 
 import numpy as np
 import torch
+import trimesh
 from torch import optim
 from tqdm import tqdm
 from typing_extensions import override
-from sklearn.model_selection import KFold
 from source.trainer.model_trainer import ModelTrainer
 import torch.nn.functional as F
 
-from source.utils.model import compute_r2_score
+from source.utils.model import compute_r2_score, compute_rel_l2_score
 
 
 class PointNetTrainer(ModelTrainer):
@@ -18,6 +18,7 @@ class PointNetTrainer(ModelTrainer):
         super().__init__(config, model, data_loaders)
         self._train_best_mse = None
         self._train_best_r2 = 0
+        self._train_best_rel_l2 = 0
         self._train_size = 0
         self._val_size = 0
         self._test_size = 0
@@ -69,6 +70,7 @@ class PointNetTrainer(ModelTrainer):
 
         # Best model tracking variables
         best_mse = float("inf")
+        best_rel_l2 = float("inf")
         best_r2 = float("-inf")  # Initialize with the worst possible R²
 
         # Training loop
@@ -80,7 +82,7 @@ class PointNetTrainer(ModelTrainer):
             total_loss, total_r2 = 0, 0
 
             # Iterate over batches of data
-            for data, targets in tqdm(
+            for data, targets, _, _ in tqdm(
                     self.data_loaders.train_dataloaders[0],
                     desc=f"Epoch {epoch + 1}/{epochs} [Training]",
             ):
@@ -117,7 +119,7 @@ class PointNetTrainer(ModelTrainer):
             all_targets = []
 
             with torch.no_grad():
-                for data, targets in tqdm(
+                for data, targets, _, _ in tqdm(
                         self.data_loaders.val_dataloaders[0],
                         desc=f"Epoch {epoch + 1}/{epochs} [Validation]",
                 ):
@@ -139,12 +141,17 @@ class PointNetTrainer(ModelTrainer):
                     inference_times.append(inference_duration)
 
             # Concatenate all predictions and targets
-            all_preds = np.concatenate(all_preds)
-            all_targets = np.concatenate(all_targets)
+            dataset_conf = self.config.datasets.get(self.config.parameters.data.dataset)
+            all_preds = np.concatenate(all_preds) if dataset_conf.target_col_alias == "Drag" else np.concatenate(
+                all_preds, axis=0).flatten()
+            all_targets = np.concatenate(all_targets) if dataset_conf.target_col_alias == "Drag" else np.concatenate(
+                all_targets, axis=0).flatten()
 
             # Compute R² for the entire validation dataset
             val_r2 = compute_r2_score(all_targets, all_preds)
+            val_rel_l2 = compute_rel_l2_score(all_targets, all_preds)
             self.result_collector.add_r2_scores(val_r2)
+            self.result_collector.add_rel_l2_scores(val_rel_l2)
 
             avg_val_loss = val_loss / len(self.data_loaders.val_dataloaders[0])
             val_losses.append(avg_val_loss)
@@ -154,14 +161,21 @@ class PointNetTrainer(ModelTrainer):
             print(
                 f"Epoch {epoch + 1} Validation Loss: {avg_val_loss:.8f}, Avg Inference Time: {avg_inference_time:.4f}s"
             )
-            print(f"Epoch {epoch + 1} Validation R²: {val_r2:.4f}")
+            print(f"Epoch {epoch + 1} Validation R²: {val_r2:.4f}, Validation RelL2: {val_rel_l2:.4f}")
 
             # Update the best model if the current model outperforms previous models
-            if (val_r2 > best_r2) or (val_r2 == best_r2 and avg_val_loss < best_mse):
+            if dataset_conf.target_col_alias == "Drag":
+                compare_exp = (val_r2 > best_r2) or (val_r2 == best_r2 and avg_val_loss < best_mse)
+            else:
+                compare_exp = (val_rel_l2 < best_rel_l2) or (val_rel_l2 == best_rel_l2 and avg_val_loss < best_mse)
+
+            if compare_exp:
                 best_epoch = epoch + 1
                 best_mse = avg_val_loss
                 best_r2 = val_r2
+                best_rel_l2 = val_rel_l2
                 self._train_best_r2 = val_r2
+                self._train_best_rel_l2 = val_rel_l2
                 self._train_best_mse = best_mse
                 self.result_collector.save_best_model(model.state_dict(), best_mse)
 
@@ -169,7 +183,7 @@ class PointNetTrainer(ModelTrainer):
 
         self._training_time = time.time() - training_start_time
         print(
-            f"\nTraining Complete! Best Validation MSE: {best_mse:.8f}, Best R²: {best_r2:.4f} found at epoch {best_epoch}")
+            f"\nTraining Complete! Best Validation MSE: {best_mse:.8f}, Best R²: {best_r2:.4f}, Best RelL2: {best_rel_l2:.4f} found at epoch {best_epoch}")
         print(f"Total Training Time: {self._training_time:.2f} seconds")
         # self.result_collector.save_epoch_data()
 
@@ -216,7 +230,7 @@ class PointNetTrainer(ModelTrainer):
                 model.train()
                 total_loss = 0
 
-                for data, targets in tqdm(train_loader,
+                for data, targets, _, _ in tqdm(train_loader,
                                           desc=f"Fold {fold + 1}/{self.config.parameters.data.k_folds} -> Epoch {epoch + 1}/{self.config.parameters.model.epochs} [Training]"):
                     data, targets = data.to(self.device), targets.to(self.device).squeeze()
                     data = data.permute(0, 2, 1)  # Adjust data dimensions if necessary
@@ -257,8 +271,12 @@ class PointNetTrainer(ModelTrainer):
                         inference_times.append(inference_duration)
 
                 avg_val_loss = val_loss / len(val_loader)
-                all_preds = np.concatenate(all_preds)
-                all_targets = np.concatenate(all_targets)
+                dataset_conf = self.config.datasets.get(self.config.parameters.data.dataset)
+                all_preds = np.concatenate(all_preds) if dataset_conf.target_col_alias == "Drag" else np.concatenate(
+                    all_preds, axis=0).flatten()
+                all_targets = np.concatenate(
+                    all_targets) if dataset_conf.target_col_alias == "Drag" else np.concatenate(all_targets,
+                                                                                                axis=0).flatten()
                 val_r2 = compute_r2_score(all_targets, all_preds)
 
                 print(
@@ -283,23 +301,26 @@ class PointNetTrainer(ModelTrainer):
         print(f"K-Fold Cross-Validation Complete! Best MSE: {best_mse:.6f}, Best R²: {best_r2:.4f}")
 
     @override
-    def test(self, model: torch.nn.Module):
+    def test(self, model: torch.nn.Module, predictor=False):
         model.eval()  # Set the model to evaluation mode
         total_mse, total_mae, total_r2 = 0, 0, 0
         max_mae = 0
         total_inference_time = 0  # To track total inference time
         total_samples = 0  # To count the total number of samples processed
+        all_data = []
         all_preds = []
         all_targets = []
+        dataset_conf = self.config.datasets.get(self.config.parameters.data.dataset)
 
         self._test_size = len(self.data_loaders.test_dataloader.dataset)
         # Disable gradient calculation
         with torch.no_grad():
-            for data, targets in self.data_loaders.test_dataloader:
+            for data, targets, (min_data, max_data), (min_target, max_target) in self.data_loaders.test_dataloader:
                 start_time = time.time()  # Start time for inference
 
-                data, targets = data.to(self.device), targets.to(self.device).squeeze()
-                data = data.permute(0, 2, 1)
+                _data, targets = data.to(self.device), targets.to(self.device).squeeze()
+                all_data.append(_data.cpu().numpy())
+                data = _data.permute(0, 2, 1)
                 outputs = model(data)
 
                 end_time = time.time()  # End time for inference
@@ -329,38 +350,58 @@ class PointNetTrainer(ModelTrainer):
         avg_mse = total_mse / len(self.data_loaders.test_dataloader)
         avg_mae = total_mae / len(self.data_loaders.test_dataloader)
         # Concatenate all predictions and targets
+        all_data = np.concatenate(all_data)
         all_preds = np.concatenate(all_preds)
         all_targets = np.concatenate(all_targets)
-        test_r2 = compute_r2_score(all_targets, all_preds)
 
+        self.result_collector.test_data_loader = self.data_loaders.test_dataloader
+        self.result_collector.all_data = all_data
         self.result_collector.targets = all_targets
         self.result_collector.predictions = all_preds
-        self.result_collector.save_predictions()
+
+        test_r2 = compute_r2_score(all_targets.flatten(), all_preds.flatten())
+        test_rel_l2 = compute_rel_l2_score(all_targets.flatten(), all_preds.flatten())
+
+        if dataset_conf.target_col_alias == "Drag":
+            self.result_collector.save_predictions(predictor)
+        #else:
+        #    self.result_collector.save_pressure_prediction(min_data, max_data, min_target, max_target, predictor)
         # Output test results
         print(
-            f"Test MSE: {avg_mse:.6f}, Test MAE: {avg_mae:.6f}, Max MAE: {max_mae:.6f}, Test R²: {test_r2:.4f}"
+            f"Test MSE: {avg_mse:.6f}, Test MAE: {avg_mae:.6f}, Max MAE: {max_mae:.6f}, Test R²: {test_r2:.4f}, Test RelL2: {test_rel_l2:.4f}"
         )
         print(
             f"Total inference time: {total_inference_time:.2f}s for {total_samples} samples"
         )
+        if not predictor:
+            scores = {
+                "Train size": self._train_size,
+                "Validation size": self._val_size,
+                "Test size": self._test_size,
+                "Best model R2": self._train_best_r2,
+                "Test R2": test_r2,
+                "Train Best MSE": self._train_best_mse,
+                "Test MSE": avg_mse,
+                "Best model RelL2": self._train_best_rel_l2,
+                "Test RelL2": test_rel_l2,
+                "Test MAE": avg_mae,
+                "Test Max MAE": max_mae,
+                "Train Time(s)": f"{self._training_time:.2f}",
+                "Total Inference Time(s)": f"{total_inference_time:.2f}",
+            }
+            self.result_collector.save_test_scores(scores)
 
-        scores = {
-            "Train size": self._train_size,
-            "Validation size": self._val_size,
-            "Test size": self._test_size,
-            "Train Best MSE": self._train_best_mse,
-            "Best model R2": self._train_best_r2,
-            "Test MSE": avg_mse,
-            "Test MAE": avg_mae,
-            "Test Max MAE": max_mae,
-            "Test R2": test_r2,
-            "Train Time(s)": f"{self._training_time:.2f}",
-            "Total Inference Time(s)": f"{total_inference_time:.2f}",
-        }
-        self.result_collector.save_test_scores(scores)
+    def remove_module_prefix(self, state_dict):
+        """Remove 'module.' prefix from keys (for models trained using DataParallel)."""
+        from collections import OrderedDict
+        new_state_dict = OrderedDict()
+        for k, v in state_dict.items():
+            name = k[7:] if k.startswith("module.") else k  # strip 'module.'
+            new_state_dict[name] = v
+        return new_state_dict
 
     @override
-    def load_and_test(self):
+    def load_model(self, file_path=None):
         """Load a saved model and test it, returning the test results."""
         this_model = self.model(config=self.config).to(self.device)
         if self.config.environment.cuda and torch.cuda.device_count() > 1:
@@ -368,14 +409,78 @@ class PointNetTrainer(ModelTrainer):
                 this_model, device_ids=self.config.environment.device_id
             )
 
-        best_model_path = os.path.join(
-            self.config.outputs.model.best_model_path,
-            f"{self.config.exp_name}_best_model.pth",
-        )
+        if file_path is None:
+            best_model_path = os.path.join(
+                self.config.outputs.model.best_model_path,
+                f"{self.config.exp_name}_best_model.pth",
+            )
+        else:
+            best_model_path = f"{self.config.base_path}/{file_path}"
         print(f"Load best model: {best_model_path}")
 
         if not os.path.exists(best_model_path):
             print("No valuable model.")
         else:
-            this_model.load_state_dict(torch.load(best_model_path))
-            self.test(this_model)
+            if self.config.environment.cuda:
+                state_dict = torch.load(best_model_path, map_location=self.device)
+            else:
+                state_dict = self.remove_module_prefix(torch.load(best_model_path, map_location=self.device))
+
+            this_model.load_state_dict(state_dict)
+            return this_model
+
+    def load_and_preprocess_stl(
+            self,
+            file_path: str,
+            num_points: int = 250000,
+            device: str = "cpu"
+    ) -> torch.Tensor:
+        """
+        Load an STL file and convert it into a normalized point cloud tensor for PointNet.
+
+        Args:
+            file_path (str): Path to the STL file.
+            num_points (int): Number of points to sample from the surface.
+            device (str): 'cpu' or 'cuda' — where to load the tensor.
+
+        Returns:
+            torch.Tensor: Tensor of shape (1, 3, N), ready for PointNet.
+        """
+        mesh = trimesh.load_mesh(file_path)
+
+        if not isinstance(mesh, trimesh.Trimesh):
+            raise ValueError(f"Invalid STL file or unsupported mesh type: {file_path}")
+
+        # Sample points uniformly on the surface of the mesh
+        points, _ = trimesh.sample.sample_surface(mesh, num_points)
+
+        # Normalize the point cloud to zero-mean and unit sphere
+        points = points - points.mean(axis=0)  # center
+        scale = np.max(np.linalg.norm(points, axis=1))
+        points = points / scale  # scale to unit ball
+
+        # Convert to torch tensor: shape (1, 3, num_points)
+        point_tensor = torch.tensor(points, dtype=torch.float32).T.unsqueeze(0).to(device)
+
+        return point_tensor
+
+    def predict_one(self, model: torch.nn.Module, file_path: str):
+        """
+        Predict for a single sample or file input (already preprocessed to tensor).
+        """
+        data_tensor = self.load_and_preprocess_stl(file_path)  # → should return torch.Tensor
+        model.eval()
+
+        with torch.no_grad():
+            data = data_tensor.to(self.device)
+
+            start_time = time.time()
+            output = model(data)
+            inference_time = time.time() - start_time
+
+            prediction = output.squeeze().cpu().numpy()
+
+            print(f"Prediction: {prediction}")
+            print(f"Inference time: {inference_time:.4f}s")
+
+            return prediction

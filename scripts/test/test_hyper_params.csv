@@ -1,0 +1,7 @@
+dataset_name,model_arch,model_name,train_size,batch_size,epochs,num_points,lr,dropout
+AhmedML,PointNet,SimplePointNet,200,16,200,110000,0.0001,0.0
+WindsorML,PointNet,SimplePointNet,200,16,200,110000,0.0001,0.0
+DrivAerML,PointNet,SimplePointNet,200,16,200,110000,0.0001,0.0
+AhmedML,PointNet,RegPointNet,200,16200,110000,0.0001,0.0
+WindsorML,PointNet,RegPointNet,200,16,200,110000,0.0001,0.0
+DrivAerML,PointNet,RegPointNet,200,16,200,110000,0.0001,0.0

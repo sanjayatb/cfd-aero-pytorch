@@ -140,4 +140,4 @@ EOF
 
     echo "Submitting experiment $RUNNING_COUNT/$TOTAL_EXP completed : $EXP_NAME"
     sleep 5
-dones
+done

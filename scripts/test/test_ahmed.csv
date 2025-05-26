@@ -1,0 +1,2 @@
+dataset_name,model_arch,model_name,train_size,batch_size,epochs,num_points,lr,dropout,conv_layers,fc_layers
+AhmedML,PointNet,SimplePointNet,350,16,300,100000,0.001,0.0,[3:128:256],[256:128:1]

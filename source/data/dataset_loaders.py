@@ -74,6 +74,10 @@ class DatasetLoaders:
                 train_data_ids = file_names[:n_train]
                 val_data_ids = file_names[n_train:n_train + n_val]
                 test_data_ids = file_names[n_train + n_val:]
+                if self.config.predictor.enable:
+                    with open(os.path.join(self.config.base_path, self.config.predictor.test_file_path), "r") as file:
+                        test_data_ids = file.read().split()
+
                 train_dataset = create_subset(full_dataset, train_data_ids)
                 val_dataset = create_subset(full_dataset, val_data_ids)
 
@@ -99,7 +103,7 @@ class DatasetLoaders:
                     train_data_ids)
                 self.write_to_file(f"../outputs/subset_dynamic/{self.config.experiment_batch_name}/val_design_ids.txt",
                                    val_data_ids)
-                self.write_to_file(f"../outputs/subset_dynamic/{self.config.experiment_batch_name}/test_design_ids.txt",
+                self.write_to_file(f"../outputs/subset_dynamic/{self.config.experiment_batch_name}/test_design_ids_4000.txt",
                                    test_data_ids)
 
             else:
@@ -133,7 +137,7 @@ class DatasetLoaders:
         else:
             train_data_ids = get_id_list("train_design_ids.txt")
             val_data_ids = get_id_list("val_design_ids.txt")
-            test_data_ids = get_id_list("test_design_ids.txt")
+            test_data_ids = get_id_list("test_design_ids_4000.txt")
 
             train_dataset = create_subset(full_dataset, train_data_ids)
             train_size = self.config.parameters.data.training_size
@@ -229,7 +233,7 @@ class GeoDatasetLoaders:
         )
 
         val_dataset = create_subset(full_dataset, "val_design_ids.txt")
-        test_dataset = create_subset(full_dataset, "test_design_ids.txt")
+        test_dataset = create_subset(full_dataset, "test_design_ids_4000.txt")
         # Initialize DataLoaders for each subset
 
         self.train_dataloader = GeoDataLoader(

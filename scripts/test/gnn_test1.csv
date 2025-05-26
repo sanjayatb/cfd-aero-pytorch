@@ -1,0 +1,4 @@
+dataset_name,model_arch,model_name,train_size,batch_size,epochs,num_points,lr,dropout
+AhmedML,GNN,DragGNN_XL,200,16,100,100000,0.001,0.0
+WindsorML,GNN,DragGNN_XL,200,16,100,100000,0.001,0.0
+DrivAerML,GNN,DragGNN_XL,200,16,100,100000,0.001,0.0

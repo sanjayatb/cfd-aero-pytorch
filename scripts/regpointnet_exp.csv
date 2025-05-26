@@ -1,0 +1,6 @@
+dataset_name,model_arch,model_name,sample_size,batch_size,epochs,num_points,lr,dropout
+DrivAerNet,PointNet,RegPointNet,200,16,300,100000,0.001,0.3,[3:64:128:256:512:1024:2048],[2048:1024:256:1]
+DrivAerNet,PointNet,RegPointNet,300,16,300,100000,0.001,0.3,[3:64:128:256:512:1024:2048],[2048:1024:256:1]
+DrivAerNet,PointNet,RegPointNet,400,16,300,100000,0.001,0.3,[3:64:128:256:512:1024:2048],[2048:1024:256:1]
+DrivAerNet,PointNet,RegPointNet,500,16,300,100000,0.001,0.3,[3:64:128:256:512:1024:2048],[2048:1024:256:1]
+DrivAerNet,PointNet,RegPointNet,4000,16,300,100000,0.001,0.3,[3:64:128:256:512:1024:2048],[2048:1024:256:1]

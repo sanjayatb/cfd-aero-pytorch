@@ -2,7 +2,8 @@ import importlib
 
 from source.data.ahmed_ml_dataset import AhmedMLDataset, AhmedMLGNNDataset
 from source.data.dataset_loaders import DatasetLoaders, GeoDatasetLoaders
-from source.data.drivaer_ml_dataset import DrivAerNetDataset, DrivAerNetGNNDataset
+from source.data.drivaer_ml_dataset import DrivAerMLDataset
+from source.data.drivaer_net_dataset import DrivAerNetDataset, DrivAerNetGNNDataset
 from source.data.enums import CFDDataset
 from source.data.windsor_ml_dataset import WindsorMLDataset, WindsorMLGNNDataset
 from source.trainer.gnn_trainer import GNNTrainer
@@ -50,6 +51,14 @@ class TrainerFactory:
                 pointcloud_exist=False,
             )
         elif config.parameters.data.dataset == CFDDataset.DRIVAER_ML.value:
+            dataset = DrivAerMLDataset(
+                config=config,
+                root_dir=dataset_conf.stl_path,
+                csv_file=dataset_conf.target_data_path,
+                num_points=config.parameters.data.num_points,
+                pointcloud_exist=False,
+            )
+        elif config.parameters.data.dataset == CFDDataset.DRIVAER_NET.value:
             dataset = DrivAerNetDataset(
                 config=config,
                 root_dir=dataset_conf.stl_path,

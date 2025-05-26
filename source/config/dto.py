@@ -68,6 +68,12 @@ class OutputsConfig:
     preprocessed_data: str
     model: ModelOutput
 
+@dataclass
+class Predictor:
+    enable: bool
+    best_model_path: str
+    test_file_path: str
+    test_output_path: str
 
 @dataclass
 class Config:
@@ -80,6 +86,7 @@ class Config:
     environment: EnvironmentConfig
     parameters: Parameters
     outputs: OutputsConfig
+    predictor: Predictor
 
     def __post_init__(self):
         for _, dataset in self.datasets.items():

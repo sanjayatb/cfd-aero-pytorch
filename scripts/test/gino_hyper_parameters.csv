@@ -1,0 +1,2 @@
+dataset_name,model_arch,model_name,train_size,batch_size,epochs,num_points,lr,dropout
+DrivAerML,GINO,GINO,5,2,5,1500,0.001,0.0

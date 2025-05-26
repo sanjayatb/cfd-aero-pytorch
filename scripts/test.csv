@@ -1,3 +1,2 @@
-dataset_name,model_arch,model_name,train_size,batch_size,epochs,num_points,lr,dropout,conv_layers,fc_layers
-AhmedML,PointNet,SimplePointNet,350,16,300,100000,0.001,0.05,[3:512:1024:2048],[2048:1024:256:1]
-AhmedML,PointNet,SimplePointNet,350,16,300,100000,0.001,0.05,[3:8:16:32:64],[64:32:16:1]
+dataset_name,model_arch,model_name,sample_size,batch_size,epochs,num_points,lr,dropout
+DrivAerNet,PointNet,SimplePointNet,300,16,300,100000,0.001,0.3,[3:64:128:256:512:1024:2048],[2048:1024:256:1]

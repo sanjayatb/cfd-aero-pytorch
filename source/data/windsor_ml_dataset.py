@@ -64,6 +64,7 @@ class WindsorMLDataset(Dataset):
     def get_all_file_names(self):
         folder_path = Path(self.root_dir)
         file_names = [file.stem for file in folder_path.iterdir() if file.is_file()]
+        file_names = sorted(file_names)
         if len(file_names) > self.config.parameters.data.max_total_samples:
             return file_names[0:self.config.parameters.data.max_total_samples]
         else:

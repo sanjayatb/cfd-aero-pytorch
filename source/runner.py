@@ -60,6 +60,7 @@ class Runner:
             choices=[e.value for e in CFDDataset],
         )
         parser.add_argument("--experiment-batch-name", type=str, required=False)
+        parser.add_argument("--sample-size", type=int, required=False)
         parser.add_argument("--train-size", type=int, required=False)
         parser.add_argument("--batch-size", type=int, required=False)
         parser.add_argument("--epochs", type=int, required=False)
@@ -78,7 +79,7 @@ class Runner:
 
     def run(self):
         setup_seed(self.config.environment.seed)
-
+        print(f"Running on random seed: {self.config.environment.seed}")
         if self.config.model_arch == ModelArchitecture.POINT_NET.value:
             trainer = TrainerFactory.get_pointnet_trainer(self.config)
         elif self.config.model_arch == ModelArchitecture.GNN.value:
@@ -94,7 +95,8 @@ class Runner:
             trainer.train_and_evaluate(model)
         else:
             trainer.train_and_evaluate_kflod(model)
-        trainer.load_and_test()
+        loaded_model = trainer.load_model()
+        trainer.test(loaded_model)
 
 
 if __name__ == "__main__":

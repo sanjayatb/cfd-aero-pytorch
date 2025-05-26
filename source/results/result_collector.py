@@ -5,7 +5,7 @@ import pandas as pd
 import torch
 import numpy as np
 from source.config.dto import Config
-
+import pyvista as pv
 
 class ResultCollector:
     config: Config
@@ -13,6 +13,9 @@ class ResultCollector:
     def __init__(self, config):
         self.config = config
         self.result_dict = {}
+        self.test_data_loader = None
+        self.indices = []
+        self.all_data = []
         self.targets = []
         self.predictions = []
 
@@ -22,6 +25,12 @@ class ResultCollector:
         else:
             self.result_dict.get("r2_score").append(score)
 
+    def add_rel_l2_scores(self, score):
+        if "rel_l2_score" not in self.result_dict:
+            self.result_dict["rel_l2_score"] = [score]
+        else:
+            self.result_dict.get("rel_l2_score").append(score)
+
     def save_best_model(self, model_dict, best_mse):
         best_model_path = os.path.join(
             self.config.outputs.model.best_model_path,
@@ -30,7 +39,7 @@ class ResultCollector:
         torch.save(model_dict, best_model_path)
         print(f"New best model saved with MSE: {best_mse:.6f}")
 
-    def save_test_scores(self, scores):
+    def save_test_scores(self, scores, predictor=False):
         hyperparameters = (
                 self.config.parameters.data.__dict__ | self.config.parameters.model.__dict__
         )
@@ -100,14 +109,114 @@ class ResultCollector:
         np.savetxt(csv_filename, indexed_data, fmt="%.4f", delimiter=",", header="Index,Value", comments="")
         print("Epoch data CSV saved successfully!")
 
-    def save_predictions(self):
+    def save_predictions(self, predictor=False):
         date = datetime.now().strftime("%Y-%m-%d")
         dataset_conf = self.config.datasets.get(self.config.parameters.data.dataset)
         csv_filename = os.path.join(
             self.config.outputs.model.best_scores_path,
             f"{date}_{dataset_conf.target_col_alias}_{self.config.exp_name}_predictions_on_test_set.csv",
-        )
+        ) if predictor is False else os.path.join(self.config.base_path, self.config.predictor.test_output_path)
         data = pd.DataFrame({"Targets": self.targets, "Prediction": self.predictions})
         indexed_data = np.column_stack((np.arange(1, len(data) + 1), data))
         np.savetxt(csv_filename, indexed_data, fmt="%d,%.4f,%.4f", delimiter=",", header="Index,Targets,Prediction", comments="")
-        print("Epoch data CSV saved successfully!")
+        print("Prediction vs targets file saved successfully!")
+
+    def min_max_denormalize(self, normalized_data: torch.Tensor, min_vals: torch.Tensor,
+                            max_vals: torch.Tensor) -> torch.Tensor:
+        """
+        Reverts data from normalized [0, 1] range back to original values.
+
+        Args:
+            normalized_data (Tensor): Normalized data
+            min_vals (Tensor): Minimum values used for normalization
+            max_vals (Tensor): Maximum values used for normalization
+
+        Returns:
+            Tensor: Denormalized data
+        """
+        return normalized_data * (max_vals - min_vals + 1e-8) + min_vals
+
+    def pressure_denorm(self, normalized_data: torch.Tensor):
+        return normalized_data * 30**2
+
+    def save_pressure_prediction(self, min_data, max_data, min_target, max_target, predictor=False):
+
+        file_name = self.test_data_loader.dataset.dataset.data_frame['Design'][0]
+
+        camera_position = [(-11.073024242161921, -5.621499358347753, 5.862225824910342),
+                           (1.458462064391673, 0.002314306982062475, 0.6792134746589196),
+                           (0.34000174095454166, 0.10379556639001211, 0.9346792479485448)]
+
+        data_tensor = torch.tensor(self.all_data, dtype=torch.float32)
+
+        vertices_denorm = self.min_max_denormalize(data_tensor, min_data, max_data)
+        vertices = vertices_denorm.cpu().numpy()[0]
+        actual_point_cloud = pv.PolyData(vertices)
+        pressure_point_cloud = pv.PolyData(vertices)
+
+        actual_tensor = torch.tensor(self.targets, dtype=torch.float32)
+        predict_tensor = torch.tensor(self.predictions, dtype=torch.float32)
+        #actual_denorm = self.min_max_denormalize(actual_tensor, min_target.squeeze(dim=2), max_target.squeeze(dim=2))
+        #predict_denorm = self.min_max_denormalize(predict_tensor, min_target.squeeze(dim=2), max_target.squeeze(dim=2))
+        actual_denorm = self.pressure_denorm(actual_tensor)
+        predict_denorm = self.pressure_denorm(predict_tensor)
+
+        actual_point_cloud["pressure"] = actual_denorm[0]  # add scalar field
+        pressure_point_cloud["pressure"] = predict_denorm[0]  # add scalar field
+
+        num_points = vertices.shape[0]
+        plotter = pv.Plotter(shape=(1, 3), title=f"Ground Truth vs Prediction vs Error: {file_name}", off_screen=True)
+        #plotter = pv.Plotter(shape=(1, 3), title=f"Ground Truth vs Prediction vs Error: {file_name}")
+
+        plotter.subplot(0, 0)
+        plotter.add_text(f"Ground Truth Pressure\nPoints: {num_points}", position="upper_left", font_size=10, color="black")
+        plotter.add_points(
+            actual_point_cloud,
+            scalars="pressure",
+            cmap="jet",
+            point_size=3,
+            render_points_as_spheres=True,
+        )
+        plotter.camera_position = camera_position
+
+        plotter.subplot(0, 1)
+        plotter.add_text(f"Pressure Prediction\nPoints: {num_points}", position="upper_left", font_size=10, color="black")
+        plotter.add_points(
+            pressure_point_cloud,
+            scalars="pressure",
+            cmap="jet",
+            point_size=3,
+            render_points_as_spheres=True,
+        )
+        plotter.add_scalar_bar(title="Pressure")
+        plotter.camera_position = camera_position
+
+        # Plot Error
+        error_tensor = (predict_denorm - actual_denorm).abs()
+        error_point_cloud = pv.PolyData(vertices)
+        error_point_cloud["error"] = error_tensor[0]  # assuming shape [1, N, 1]
+
+        # Compute relative L2 error
+        norm_rel_l2 = torch.norm(predict_tensor - actual_tensor) / torch.norm(actual_tensor)
+        norm_rel_l2_value = norm_rel_l2.item()
+        rel_l2 = torch.norm(predict_denorm - actual_denorm) / torch.norm(actual_denorm)
+        rel_l2_value = rel_l2.item()
+
+        plotter.subplot(0, 2)
+        plotter.add_text(
+            f"Pressure Absolute Error\nPoints: {num_points}\nNormalize Rel L2: {norm_rel_l2_value:.4f}\nActual Rel L2: {rel_l2_value:.4f}",
+            position="upper_left",
+            font_size=10,
+            color="black"
+        )
+        plotter.add_points(
+            error_point_cloud,
+            scalars="error",
+            cmap="jet",
+            point_size=3,
+            render_points_as_spheres=True,
+        )
+        plotter.camera_position = camera_position
+
+        #plotter.show()
+        plotter.screenshot(f"../outputs/plots/pressure_plot_{file_name}.png")

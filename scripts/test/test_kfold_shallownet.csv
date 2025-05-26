@@ -1,0 +1,2 @@
+dataset_name,model_arch,model_name,train_size,batch_size,epochs,num_points,lr,dropout
+DrivAerML,PointNet,SimplePointNet,4000,16,300,100000,0.001,0.3,[3:64:128:256:512:1024:2048],[2048:1024:256:1]
