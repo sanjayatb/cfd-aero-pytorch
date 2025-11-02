@@ -33,6 +33,11 @@ class TrainerFactory:
     def get_pointnet_trainer(config):
 
         dataset_conf = config.datasets.get(config.parameters.data.dataset)
+        if config.predictor.enable:
+            if config.predictor.test_stl_path:
+                dataset_conf.stl_path = config.predictor.test_stl_path
+            if config.predictor.test_target_path:
+                dataset_conf.target_data_path = config.predictor.test_target_path
         if config.parameters.data.dataset == CFDDataset.AHMED_ML.value:
             dataset = AhmedMLDataset(
                 config=config,
@@ -83,6 +88,11 @@ class TrainerFactory:
     def get_gnn_trainer(config):
 
         dataset_conf = config.datasets.get(config.parameters.data.dataset)
+        if config.predictor.enable:
+            if config.predictor.test_stl_path:
+                dataset_conf.stl_path = config.predictor.test_stl_path
+            if config.predictor.test_target_path:
+                dataset_conf.target_data_path = config.predictor.test_target_path
         if config.parameters.data.dataset == CFDDataset.AHMED_ML.value:
             dataset = AhmedMLGNNDataset(
                 config=config,

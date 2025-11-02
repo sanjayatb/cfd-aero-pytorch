@@ -16,6 +16,9 @@ from torch_geometric.data import Data
 from source.config.dto import Config
 from source.data.augmentation import DataAugmentation
 from source.data.enums import CFDDataset
+from source.utils.trimesh_compat import ensure_trimesh_numpy_ptp
+
+ensure_trimesh_numpy_ptp()
 
 
 class AhmedMLDataset(Dataset):

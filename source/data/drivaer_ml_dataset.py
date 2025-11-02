@@ -16,6 +16,9 @@ from source.data.augmentation import DataAugmentation
 from pathlib import Path
 
 from source.data.util import read_stl, fetch_mesh_vertices, convert_to_triangular_mesh
+from source.utils.trimesh_compat import ensure_trimesh_numpy_ptp
+
+ensure_trimesh_numpy_ptp()
 
 
 class DrivAerMLDataset(Dataset):

@@ -1,3 +1,5 @@
+from typing import Dict, List
+
 from source.config.dto import Config
 from source.model.base import Model
 from torch.nn import TransformerEncoder, TransformerEncoderLayer
@@ -504,3 +506,235 @@ class InceptionPointNet(Model):
         x = self.final_fc(x)
 
         return x
+
+
+class PointTransformerV3Regressor(Model):
+    """Wrapper around the PointTransformerV3 backbone for CFD regression tasks."""
+
+    def __init__(self, config: Config):
+        super().__init__(config)
+        pt_cfg = dict(getattr(config.parameters.model, "point_transformer", {}) or {})
+
+        backbone_cls, offset2bincount = self._load_point_transformer()
+        self._offset2bincount = offset2bincount
+
+        dataset_conf = self.config.datasets.get(self.config.parameters.data.dataset)
+        self.target_alias = dataset_conf.target_col_alias
+        self.num_points = config.parameters.data.num_points
+        self.grid_size = float(pt_cfg.get("grid_size", 0.01))
+        self.use_all_features = bool(pt_cfg.get("use_all_features", False))
+
+        backbone_kwargs = self._build_backbone_kwargs(pt_cfg)
+        self.in_channels = backbone_kwargs["in_channels"]
+        self.cls_mode = backbone_kwargs.get("cls_mode", False)
+        self.out_channels = (
+            backbone_kwargs["enc_channels"][-1]
+            if self.cls_mode
+            else backbone_kwargs["dec_channels"][0]
+        )
+
+        try:
+            self.backbone = backbone_cls(**backbone_kwargs)
+        except Exception as exc:  # pragma: no cover - optional dependency guard
+            raise RuntimeError(
+                "Failed to initialise PointTransformerV3. Install optional "
+                "dependencies such as spconv (CUDA build) and torch_scatter "
+                "before using this model."
+            ) from exc
+
+        head_cfg = pt_cfg.get("head", {})
+        drag_cfg = head_cfg.get("drag", {})
+        pressure_cfg = head_cfg.get("pressure", {})
+
+        self.drag_pooling = drag_cfg.get("pooling", "mean").lower()
+        drag_hidden = drag_cfg.get("hidden_dims", [256, 128])
+        drag_dropout = drag_cfg.get("dropout", config.parameters.model.dropout)
+        self.drag_head = self._build_mlp(
+            [self.out_channels, *drag_hidden, 1], drag_dropout
+        )
+
+        if self.target_alias == "Pressure":
+            pressure_hidden = pressure_cfg.get("hidden_dims", [128])
+            pressure_dropout = pressure_cfg.get(
+                "dropout", config.parameters.model.dropout
+            )
+            self.pressure_head = self._build_mlp(
+                [self.out_channels, *pressure_hidden, 1], pressure_dropout
+            )
+        else:
+            self.pressure_head = None
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self.cls_mode:
+            raise NotImplementedError(
+                "PointTransformerV3Regressor currently expects cls_mode=False"
+            )
+
+        batch_size, _, num_points = x.shape
+        feats = x.transpose(1, 2).contiguous()
+
+        coords = feats[..., :3]
+        if self.use_all_features:
+            feat = feats[..., : self.in_channels]
+        else:
+            feat = coords
+
+        if feat.shape[-1] < self.in_channels:
+            pad = feat.new_zeros((batch_size, num_points, self.in_channels - feat.shape[-1]))
+            feat = torch.cat([feat, pad], dim=-1)
+        elif feat.shape[-1] > self.in_channels:
+            feat = feat[..., : self.in_channels]
+
+        batch_index = (
+            torch.arange(batch_size, device=x.device, dtype=torch.long)
+            .repeat_interleave(num_points)
+        )
+
+        point_dict = {
+            "coord": coords.reshape(-1, coords.shape[-1]),
+            "feat": feat.reshape(-1, self.in_channels),
+            "batch": batch_index,
+            "grid_size": self.grid_size,
+        }
+
+        point = self.backbone(point_dict)
+        feat = point.feat
+
+        if hasattr(point, "offset") and point.offset is not None:
+            counts = self._offset2bincount(point.offset)
+        else:  # pragma: no cover - fallback for unexpected inputs
+            counts = torch.full(
+                (batch_size,),
+                num_points,
+                device=x.device,
+                dtype=torch.long,
+            )
+
+        features = self._restore_batch(feat, counts, batch_size, num_points)
+
+        if self.target_alias == "Pressure":
+            return self._forward_pressure(features)
+
+        pooled = self._pool_features(features)
+        return self.drag_head(pooled).squeeze(-1)
+
+    def _restore_batch(
+        self,
+        feat: torch.Tensor,
+        counts: torch.Tensor,
+        batch_size: int,
+        default_points: int,
+    ) -> torch.Tensor:
+        counts_list = counts.detach().cpu().tolist()
+        chunks = torch.split(feat, counts_list)
+        target_points = self.num_points or max(counts_list + [default_points])
+
+        restored: List[torch.Tensor] = []
+        for chunk in chunks:
+            if chunk.shape[0] < target_points:
+                pad = chunk.new_zeros((target_points - chunk.shape[0], chunk.shape[1]))
+                chunk = torch.cat([chunk, pad], dim=0)
+            elif chunk.shape[0] > target_points:
+                chunk = chunk[:target_points]
+            restored.append(chunk)
+
+        if len(restored) != batch_size:
+            raise RuntimeError(
+                f"Recovered {len(restored)} samples, expected {batch_size}."
+            )
+        return torch.stack(restored, dim=0)
+
+    def _forward_pressure(self, features: torch.Tensor) -> torch.Tensor:
+        if self.pressure_head is None:
+            raise RuntimeError("Pressure head is not initialised for this dataset")
+        batch_size, num_points, channels = features.shape
+        outputs = self.pressure_head(features.view(batch_size * num_points, channels))
+        return outputs.view(batch_size, num_points, -1)
+
+    def _pool_features(self, features: torch.Tensor) -> torch.Tensor:
+        if self.drag_pooling == "max":
+            return features.max(dim=1).values
+        return features.mean(dim=1)
+
+    @staticmethod
+    def _build_mlp(channels: List[int], dropout: float) -> nn.Sequential:
+        layers: List[nn.Module] = []
+        for idx in range(len(channels) - 1):
+            layers.append(nn.Linear(channels[idx], channels[idx + 1]))
+            if idx < len(channels) - 2:
+                layers.append(nn.GELU())
+                if dropout and dropout > 0:
+                    layers.append(nn.Dropout(dropout))
+        return nn.Sequential(*layers)
+
+    def _build_backbone_kwargs(self, cfg: Dict) -> Dict:
+        order = cfg.get("order", ("z", "z-trans", "hilbert", "hilbert-trans"))
+        if isinstance(order, str):
+            order = (order,)
+        else:
+            order = tuple(order)
+
+        def _tuple_key(key, default):
+            value = cfg.get(key, default)
+            return tuple(value) if isinstance(value, (list, tuple)) else tuple(default)
+
+        kwargs = {
+            "in_channels": int(cfg.get("in_channels", 3)),
+            "order": order,
+            "stride": _tuple_key("stride", (2, 2, 2, 2)),
+            "enc_depths": _tuple_key("enc_depths", (2, 2, 2, 6, 2)),
+            "enc_channels": _tuple_key("enc_channels", (32, 64, 128, 256, 512)),
+            "enc_num_head": _tuple_key("enc_num_head", (2, 4, 8, 16, 32)),
+            "enc_patch_size": _tuple_key(
+                "enc_patch_size", (1024, 1024, 1024, 1024, 1024)
+            ),
+            "dec_depths": _tuple_key("dec_depths", (2, 2, 2, 2)),
+            "dec_channels": _tuple_key("dec_channels", (64, 64, 128, 256)),
+            "dec_num_head": _tuple_key("dec_num_head", (4, 4, 8, 16)),
+            "dec_patch_size": _tuple_key("dec_patch_size", (1024, 1024, 1024, 1024)),
+            "mlp_ratio": cfg.get("mlp_ratio", 4),
+            "qkv_bias": cfg.get("qkv_bias", True),
+            "qk_scale": cfg.get("qk_scale"),
+            "attn_drop": cfg.get("attn_drop", 0.0),
+            "proj_drop": cfg.get("proj_drop", 0.0),
+            "drop_path": cfg.get("drop_path", 0.1),
+            "pre_norm": cfg.get("pre_norm", True),
+            "shuffle_orders": cfg.get("shuffle_orders", True),
+            "enable_rpe": cfg.get("enable_rpe", False),
+            "enable_flash": cfg.get("enable_flash", False),
+            "upcast_attention": cfg.get("upcast_attention", False),
+            "upcast_softmax": cfg.get("upcast_softmax", False),
+            "cls_mode": cfg.get("cls_mode", False),
+            "pdnorm_bn": cfg.get("pdnorm_bn", False),
+            "pdnorm_ln": cfg.get("pdnorm_ln", False),
+            "pdnorm_decouple": cfg.get("pdnorm_decouple", True),
+            "pdnorm_adaptive": cfg.get("pdnorm_adaptive", False),
+            "pdnorm_affine": cfg.get("pdnorm_affine", True),
+            "pdnorm_conditions": tuple(
+                cfg.get(
+                    "pdnorm_conditions",
+                    ("ScanNet", "S3DIS", "Structured3D"),
+                )
+            ),
+        }
+        return kwargs
+
+    @staticmethod
+    def _load_point_transformer():
+        try:
+            from source.model.point_transformer_v3 import PointTransformerV3
+            from source.model.point_transformer_v3.model import offset2bincount
+        except ModuleNotFoundError as exc:  # pragma: no cover - informative failure
+            missing = exc.name or "unknown"
+            raise RuntimeError(
+                "PointTransformerV3 dependencies are missing. "
+                f"Install the optional package '{missing}' (and related CUDA/CPU builds) "
+                "before selecting PointTransformerV3Regressor."
+            ) from exc
+        except Exception as exc:  # pragma: no cover - informative failure
+            raise RuntimeError(
+                "PointTransformerV3 dependencies could not be imported. "
+                "Verify that timm, torch-scatter, spconv, addict, and flash-attn (optional) "
+                "are installed and compatible with your current platform."
+            ) from exc
+        return PointTransformerV3, offset2bincount

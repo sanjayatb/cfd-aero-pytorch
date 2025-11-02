@@ -1,3 +1,5 @@
+import os
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 import argparse
 import importlib
 import os
@@ -73,7 +75,10 @@ class Runner:
 
         args = parser.parse_args()
 
-        self.config = load_config("../configs/system_config.yml")
+        config_path = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "configs", "system_config.yml")
+        )
+        self.config = load_config(config_path)
 
         override_configs(self.config, args)
 

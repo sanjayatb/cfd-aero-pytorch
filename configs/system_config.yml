@@ -46,7 +46,7 @@ parameters:
   data:
     dataset: DrivAerNet
     data_id_load_random: true  # load ids based on the dataset randomly
-    max_total_samples: 500 # use when data_id_load_random: true
+    max_total_samples: 4000 # use when data_id_load_random: true
     train_ratio: 0.8 # use when data_id_load_random: true
     val_ratio: 0.1 # use when data_id_load_random: true and k_folds=0
     test_ratio: 0.1 # use when data_id_load_random: true
@@ -77,6 +77,37 @@ parameters:
       - 256
       - 1
     output_channels: 1
+    point_transformer:
+      in_channels: 3
+      grid_size: 0.01
+      use_all_features: false
+      order: ["z", "z-trans", "hilbert", "hilbert-trans"]
+      stride: [2, 2, 2, 2]
+      enc_depths: [2, 2, 2, 6, 2]
+      enc_channels: [32, 64, 128, 256, 512]
+      enc_num_head: [2, 4, 8, 16, 32]
+      enc_patch_size: [1024, 1024, 1024, 1024, 1024]
+      dec_depths: [2, 2, 2, 2]
+      dec_channels: [64, 64, 128, 256]
+      dec_num_head: [4, 4, 8, 16]
+      dec_patch_size: [1024, 1024, 1024, 1024]
+      mlp_ratio: 4
+      drop_path: 0.1
+      attn_drop: 0.0
+      proj_drop: 0.0
+      enable_flash: false
+      enable_rpe: false
+      upcast_attention: false
+      upcast_softmax: false
+      cls_mode: false
+      head:
+        drag:
+          hidden_dims: [256, 128]
+          dropout: 0.1
+          pooling: mean
+        pressure:
+          hidden_dims: [128]
+          dropout: 0.1
 
 outputs:
   log_path: outputs/logs
@@ -87,6 +118,13 @@ outputs:
 
 predictor:
   enable: false
-  best_model_path: outputs/models/20250504_pressure_l2_sr_DrivAerNet_PointNet_SimplePointNet_ds500_bs16_epochs300_pts100000_lr0.001_drop0.3_[3:64:128:256:512:1024:2048]_[2048:1024:256:1]_best_model.pth
+  test_stl_path: inputs/drivaer_net/test_stl
+  test_target_path: inputs/drivaer_net/test_targets.csv
+  #best_model_path: outputs/models/20250504_pressure_l2_sr_DrivAerNet_PointNet_SimplePointNet_ds500_bs16_epochs300_pts100000_lr0.001_drop0.3_[3:64:128:256:512:1024:2048]_[2048:1024:256:1]_best_model.pth
+  #best_model_path: outputs/models/20250430_80_20_test_DrivAerNet_PointNet_SimplePointNet_ds1000_bs16_epochs300_pts100000_lr0.001_drop0.3_[3:64:128:256:512:1024:2048]_[2048:1024:256:1]_best_model.pth
+  #best_model_path: outputs/models/20250430_80_20_test_DrivAerNet_PointNet_SimplePointNet_ds500_bs16_epochs300_pts100000_lr0.001_drop0.3_[3:64:128:256:512:1024:2048]_[2048:1024:256:1]_best_model.pth
+  #best_model_path: outputs/models/20250701_fixed_r2_test_DrivAerNet_PointNet_SimplePointNet_ds500_bs16_epochs300_pts100000_lr0.001_drop0.3_[3:64:128:256:512:1024:2048]_[2048:1024:256:1]_best_model.pth
+  best_model_path: outputs/models/20250707_mix_dataset_DrivAerNet_PointNet_SimplePointNet_ds500_bs16_epochs300_pts100000_lr0.001_drop0.3_[3:64:128:256:512:1024:2048]_[2048:1024:256:1]_best_model.pth
   test_file_path: outputs/subset_dynamic/pressure_l2_sr/test_design_ids_4000.txt
-  test_output_path: outputs/predictions/pressure_test_design_ids_500_predictions.txt
+  test_output_path: outputs/predictions/
+  

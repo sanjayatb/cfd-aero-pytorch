@@ -39,9 +39,10 @@ class DatasetLoaders:
                 dataset_conf = self.config.datasets.get(
                     self.config.parameters.data.dataset
                 )
-                with open(
-                        os.path.join(dataset_conf.subset_dir, ids_file), "r"
-                ) as file:
+                path = ids_file
+                if not os.path.isabs(path):
+                    path = os.path.join(dataset_conf.subset_dir, ids_file)
+                with open(path, "r") as file:
                     return file.read().split()
             except FileNotFoundError as e:
                 print(e)
@@ -69,14 +70,32 @@ class DatasetLoaders:
                 random.seed(self.config.environment.seed)
                 random.shuffle(file_names)
                 n_total = len(file_names)
-                n_train = int(self.config.parameters.data.train_ratio * n_total)
-                n_val = int(self.config.parameters.data.val_ratio * n_total)
+                train_ratio = self.config.parameters.data.train_ratio
+                val_ratio = self.config.parameters.data.val_ratio
+
+                n_train = int(train_ratio * n_total)
+                n_val = int(val_ratio * n_total)
+
+                if train_ratio > 0 and n_train == 0 and n_total > 0:
+                    n_train = 1
+
+                if val_ratio > 0 and n_val == 0 and n_total > n_train:
+                    n_val = 1
+                elif val_ratio > 0 and n_val == 0 and n_train > 1:
+                    n_train -= 1
+                    n_val = 1
+
+                n_test = max(0, n_total - n_train - n_val)
+
                 train_data_ids = file_names[:n_train]
                 val_data_ids = file_names[n_train:n_train + n_val]
-                test_data_ids = file_names[n_train + n_val:]
+                test_data_ids = file_names[n_train + n_val:n_train + n_val + n_test]
                 if self.config.predictor.enable:
-                    with open(os.path.join(self.config.base_path, self.config.predictor.test_file_path), "r") as file:
-                        test_data_ids = file.read().split()
+                    if self.config.predictor.test_file_path:
+                        with open(self.config.predictor.test_file_path, "r") as file:
+                            test_data_ids = file.read().split()
+                    else:
+                        test_data_ids = file_names
 
                 train_dataset = create_subset(full_dataset, train_data_ids)
                 val_dataset = create_subset(full_dataset, val_data_ids)
@@ -94,7 +113,7 @@ class DatasetLoaders:
                     val_dataset,
                     batch_size=self.config.parameters.model.batch_size,
                     shuffle=False,
-                    drop_last=True,
+                    drop_last=False,
                     num_workers=self.config.environment.num_workers,
                 ))
                 os.makedirs(f"../outputs/subset_dynamic/{self.config.experiment_batch_name}/", exist_ok=True)
@@ -110,6 +129,12 @@ class DatasetLoaders:
                 train_val_data_ids, test_data_ids = train_test_split(self.dataset.get_all_file_names(),
                                                                      test_size=self.config.parameters.data.test_ratio,
                                                                      random_state=42)
+                if self.config.predictor.enable:
+                    if self.config.predictor.test_file_path:
+                        with open(self.config.predictor.test_file_path, "r") as file:
+                            test_data_ids = file.read().split()
+                    else:
+                        test_data_ids = self.dataset.get_all_file_names()
                 kf = KFold(n_splits=self.config.parameters.data.k_folds, shuffle=True, random_state=42)
                 for train_ids_list, val_ids_list in kf.split(train_val_data_ids):
                     train_data_ids = [train_val_data_ids[idx] for idx in train_ids_list]
@@ -170,7 +195,7 @@ class DatasetLoaders:
             test_dataset,
             batch_size=self.config.parameters.model.batch_size,
             shuffle=False,
-            drop_last=True,
+            drop_last=False,
             num_workers=self.config.environment.num_workers,
         )
 

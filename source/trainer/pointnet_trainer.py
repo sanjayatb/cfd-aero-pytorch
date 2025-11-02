@@ -46,7 +46,8 @@ class PointNetTrainer(ModelTrainer):
     def train_and_evaluate(self, model: torch.nn.Module):
         train_losses, val_losses = [], []
         self._train_size = len(self.data_loaders.train_dataloaders[0].dataset)
-        self._val_size = len(self.data_loaders.val_dataloaders[0].dataset)
+        val_loader = self.data_loaders.val_dataloaders[0] if self.data_loaders.val_dataloaders else None
+        self._val_size = len(val_loader.dataset) if val_loader else 0
         # Record the start time of training for performance analysis
         training_start_time = time.time()
         best_epoch = None
@@ -111,6 +112,20 @@ class PointNetTrainer(ModelTrainer):
                 f"Epoch {epoch + 1} Training Loss: {avg_loss:.6f} Time: {epoch_duration:.2f}s"
             )
 
+            if not val_loader or len(val_loader.dataset) == 0:
+                print("No validation samples available; skipping validation step.")
+                if avg_loss < best_mse:
+                    best_epoch = epoch + 1
+                    best_mse = avg_loss
+                    best_r2 = float("nan")
+                    best_rel_l2 = float("nan")
+                    self._train_best_mse = best_mse
+                    self._train_best_r2 = best_r2
+                    self._train_best_rel_l2 = best_rel_l2
+                    self.result_collector.save_best_model(model.state_dict(), best_mse)
+                scheduler.step(avg_loss)
+                continue
+
             # Validation phase
             model.eval()  # Set model to evaluation mode
             val_loss, val_r2 = 0, 0
@@ -120,7 +135,7 @@ class PointNetTrainer(ModelTrainer):
 
             with torch.no_grad():
                 for data, targets, _, _ in tqdm(
-                        self.data_loaders.val_dataloaders[0],
+                        val_loader,
                         desc=f"Epoch {epoch + 1}/{epochs} [Validation]",
                 ):
                     inference_start_time = time.time()
@@ -131,45 +146,56 @@ class PointNetTrainer(ModelTrainer):
                     data = data.permute(0, 2, 1)
 
                     outputs = model(data)
-                    # loss = F.mse_loss(outputs.squeeze(), targets)
                     loss = F.mse_loss(outputs.view(-1), targets.view(-1))
                     val_loss += loss.item()
-                    all_preds.append(outputs.squeeze().cpu().numpy())
-                    all_targets.append(targets.cpu().numpy())
+                    all_preds.append(np.atleast_1d(outputs.squeeze().cpu().numpy()))
+                    all_targets.append(np.atleast_1d(targets.cpu().numpy()))
 
                     inference_duration = time.time() - inference_start_time
                     inference_times.append(inference_duration)
 
-            # Concatenate all predictions and targets
             dataset_conf = self.config.datasets.get(self.config.parameters.data.dataset)
-            all_preds = np.concatenate(all_preds) if dataset_conf.target_col_alias == "Drag" else np.concatenate(
-                all_preds, axis=0).flatten()
-            all_targets = np.concatenate(all_targets) if dataset_conf.target_col_alias == "Drag" else np.concatenate(
-                all_targets, axis=0).flatten()
+            all_preds = (
+                np.concatenate(all_preds)
+                if dataset_conf.target_col_alias == "Drag"
+                else np.concatenate(all_preds, axis=0).flatten()
+            )
+            all_targets = (
+                np.concatenate(all_targets)
+                if dataset_conf.target_col_alias == "Drag"
+                else np.concatenate(all_targets, axis=0).flatten()
+            )
 
-            # Compute R² for the entire validation dataset
             val_r2 = compute_r2_score(all_targets, all_preds)
             val_rel_l2 = compute_rel_l2_score(all_targets, all_preds)
             self.result_collector.add_r2_scores(val_r2)
             self.result_collector.add_rel_l2_scores(val_rel_l2)
 
-            avg_val_loss = val_loss / len(self.data_loaders.val_dataloaders[0])
+            avg_val_loss = val_loss / max(1, len(val_loader))
             val_losses.append(avg_val_loss)
-            avg_inference_time = sum(inference_times) / len(inference_times)
+            avg_inference_time = sum(inference_times) / max(1, len(inference_times))
 
-            # Validation summary
             print(
                 f"Epoch {epoch + 1} Validation Loss: {avg_val_loss:.8f}, Avg Inference Time: {avg_inference_time:.4f}s"
             )
             print(f"Epoch {epoch + 1} Validation R²: {val_r2:.4f}, Validation RelL2: {val_rel_l2:.4f}")
 
-            # Update the best model if the current model outperforms previous models
             if dataset_conf.target_col_alias == "Drag":
-                compare_exp = (val_r2 > best_r2) or (val_r2 == best_r2 and avg_val_loss < best_mse)
+                if np.isnan(val_r2):
+                    compare_exp = avg_val_loss < best_mse
+                else:
+                    compare_exp = (val_r2 > best_r2) or (
+                        val_r2 == best_r2 and avg_val_loss < best_mse
+                    )
             else:
-                compare_exp = (val_rel_l2 < best_rel_l2) or (val_rel_l2 == best_rel_l2 and avg_val_loss < best_mse)
+                if np.isnan(val_rel_l2):
+                    compare_exp = avg_val_loss < best_mse
+                else:
+                    compare_exp = (val_rel_l2 < best_rel_l2) or (
+                        val_rel_l2 == best_rel_l2 and avg_val_loss < best_mse
+                    )
 
-            if compare_exp:
+            if compare_exp or best_epoch is None:
                 best_epoch = epoch + 1
                 best_mse = avg_val_loss
                 best_r2 = val_r2
@@ -179,7 +205,7 @@ class PointNetTrainer(ModelTrainer):
                 self._train_best_mse = best_mse
                 self.result_collector.save_best_model(model.state_dict(), best_mse)
 
-            scheduler.step(avg_val_loss)  # Update the learning rate based on the validation loss
+            scheduler.step(avg_val_loss)
 
         self._training_time = time.time() - training_start_time
         print(
@@ -302,6 +328,9 @@ class PointNetTrainer(ModelTrainer):
 
     @override
     def test(self, model: torch.nn.Module, predictor=False):
+        if model is None:
+            print("No model available for testing; skipping evaluation.")
+            return
         model.eval()  # Set the model to evaluation mode
         total_mse, total_mae, total_r2 = 0, 0, 0
         max_mae = 0
@@ -337,14 +366,14 @@ class PointNetTrainer(ModelTrainer):
                 )  # Mean Absolute Error (MAE),
 
                 # Collect predictions and targets for R² calculation
-                all_preds.append(outputs.squeeze().cpu().numpy())
-                all_targets.append(targets.cpu().numpy())
+                all_preds.append(np.atleast_1d(outputs.squeeze().cpu().numpy()))
+                all_targets.append(np.atleast_1d(targets.cpu().numpy()))
 
                 # Accumulate metrics to compute averages later
                 total_mse += mse.item()
                 total_mae += mae.item()
                 max_mae = max(max_mae, mae.item())
-                total_samples += targets.size(0)  # Increment total sample count
+                total_samples += targets.numel()  # Increment total sample count
 
         # Compute average metrics over the entire test set
         avg_mse = total_mse / len(self.data_loaders.test_dataloader)

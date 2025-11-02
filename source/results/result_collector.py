@@ -1,3 +1,4 @@
+import json
 import os
 from datetime import datetime
 
@@ -36,26 +37,32 @@ class ResultCollector:
             self.config.outputs.model.best_model_path,
             f"{self.config.exp_name}_best_model.pth",
         )
+        os.makedirs(self.config.outputs.model.best_model_path, exist_ok=True)
         torch.save(model_dict, best_model_path)
         print(f"New best model saved with MSE: {best_mse:.6f}")
 
     def save_test_scores(self, scores, predictor=False):
-        hyperparameters = (
-                self.config.parameters.data.__dict__ | self.config.parameters.model.__dict__
+        raw_hyperparameters = (
+            self.config.parameters.data.__dict__ | self.config.parameters.model.__dict__
         )
 
         ### TODO select parameter
-        hyperparameters.pop("k")
-        hyperparameters.pop("output_channels")
+        raw_hyperparameters.pop("k")
+        raw_hyperparameters.pop("output_channels")
         if self.config.parameters.data.data_id_load_random:
-            hyperparameters.pop("training_size")
-            hyperparameters.pop("validation_size")
-            hyperparameters.pop("test_size")
+            raw_hyperparameters.pop("training_size")
+            raw_hyperparameters.pop("validation_size")
+            raw_hyperparameters.pop("test_size")
+
+        def _make_serializable(value):
+            if isinstance(value, (list, tuple, dict)):
+                return json.dumps(value, sort_keys=True)
+            return value
 
         new_entry = {
             "Model Arc": self.config.model_arch,
             "Model": self.config.model_name,
-            **hyperparameters,
+            **{k: _make_serializable(v) for k, v in raw_hyperparameters.items()},
             **scores,
             "best_model": f"{self.config.exp_name}_best_model.pth",
         }
@@ -75,7 +82,7 @@ class ResultCollector:
             df_existing = pd.read_csv(csv_filename)
 
             # Extract only hyperparameter columns
-            hyperparam_keys = list(hyperparameters.keys())
+            hyperparam_keys = list(raw_hyperparameters.keys())
             hyperparam_keys.append("Model Arc")
             hyperparam_keys.append("Model")
 
@@ -112,10 +119,38 @@ class ResultCollector:
     def save_predictions(self, predictor=False):
         date = datetime.now().strftime("%Y-%m-%d")
         dataset_conf = self.config.datasets.get(self.config.parameters.data.dataset)
-        csv_filename = os.path.join(
-            self.config.outputs.model.best_scores_path,
-            f"{date}_{dataset_conf.target_col_alias}_{self.config.exp_name}_predictions_on_test_set.csv",
-        ) if predictor is False else os.path.join(self.config.base_path, self.config.predictor.test_output_path)
+        default_name = f"{date}_{dataset_conf.target_col_alias}_{self.config.exp_name}_predictions_on_test_set.csv"
+
+        if not predictor:
+            csv_filename = os.path.join(
+                self.config.outputs.model.best_scores_path,
+                default_name,
+            )
+            os.makedirs(os.path.dirname(csv_filename), exist_ok=True)
+        else:
+            target_path = self.config.predictor.test_output_path
+            if not target_path:
+                csv_filename = os.path.join(
+                    self.config.outputs.model.best_scores_path,
+                    default_name,
+                )
+                os.makedirs(os.path.dirname(csv_filename), exist_ok=True)
+            else:
+                root = target_path.rstrip("/\\")
+                _, ext = os.path.splitext(root)
+                if ext:
+                    output_dir = os.path.dirname(root)
+                    if output_dir:
+                        os.makedirs(output_dir, exist_ok=True)
+                    csv_filename = root
+                else:
+                    output_dir = root
+                    os.makedirs(output_dir, exist_ok=True)
+                    csv_filename = os.path.join(
+                        output_dir,
+                        f"{self.config.exp_name}_predictions.csv",
+                    )
+
         data = pd.DataFrame({"Targets": self.targets, "Prediction": self.predictions})
         indexed_data = np.column_stack((np.arange(1, len(data) + 1), data))
         np.savetxt(csv_filename, indexed_data, fmt="%d,%.4f,%.4f", delimiter=",", header="Index,Targets,Prediction", comments="")

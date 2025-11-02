@@ -1,6 +1,6 @@
 import os.path
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
 
 
 @dataclass
@@ -48,6 +48,7 @@ class ModelParams:
     conv_layers: List[int]
     fc_layers: List[int]
     output_channels: int
+    point_transformer: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -70,10 +71,12 @@ class OutputsConfig:
 
 @dataclass
 class Predictor:
-    enable: bool
-    best_model_path: str
-    test_file_path: str
-    test_output_path: str
+    enable: bool = False
+    best_model_path: Optional[str] = None
+    test_file_path: Optional[str] = None
+    test_output_path: Optional[str] = None
+    test_stl_path: Optional[str] = None
+    test_target_path: Optional[str] = None
 
 @dataclass
 class Config:
@@ -105,3 +108,33 @@ class Config:
         self.outputs.model.best_scores_path = os.path.join(
             self.base_path, self.outputs.model.best_scores_path
         )
+        if self.predictor.best_model_path and not os.path.isabs(
+            self.predictor.best_model_path
+        ):
+            self.predictor.best_model_path = os.path.join(
+                self.base_path, self.predictor.best_model_path
+            )
+        if self.predictor.test_file_path and not os.path.isabs(
+            self.predictor.test_file_path
+        ):
+            self.predictor.test_file_path = os.path.join(
+                self.base_path, self.predictor.test_file_path
+            )
+        if self.predictor.test_output_path and not os.path.isabs(
+            self.predictor.test_output_path
+        ):
+            self.predictor.test_output_path = os.path.join(
+                self.base_path, self.predictor.test_output_path
+            )
+        if self.predictor.test_stl_path and not os.path.isabs(
+            self.predictor.test_stl_path
+        ):
+            self.predictor.test_stl_path = os.path.join(
+                self.base_path, self.predictor.test_stl_path
+            )
+        if self.predictor.test_target_path and not os.path.isabs(
+            self.predictor.test_target_path
+        ):
+            self.predictor.test_target_path = os.path.join(
+                self.base_path, self.predictor.test_target_path
+            )

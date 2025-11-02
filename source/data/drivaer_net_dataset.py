@@ -15,6 +15,9 @@ from source.data.augmentation import DataAugmentation
 from pathlib import Path
 
 from source.data.util import read_vtk, convert_to_triangular_mesh, fetch_mesh_vertices
+from source.utils.trimesh_compat import ensure_trimesh_numpy_ptp
+
+ensure_trimesh_numpy_ptp()
 
 
 class DrivAerNetDataset(Dataset):
